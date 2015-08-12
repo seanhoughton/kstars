@@ -802,10 +802,14 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
 {
     QString ra_dms, dec_dms;
     static bool slew_dirty=false;
+    
+    appendLogText(xi18nc("processTelescopeNumber(): %1", "processTelescopeNumber(): %1", coord->name));
 
     if (!strcmp(coord->name, "EQUATORIAL_EOD_COORD"))
     {        
         getFormattedCoords(coord->np[0].value, coord->np[1].value, ra_dms, dec_dms);
+	
+	appendLogText(xi18nc("Mount at RA: %1   DEC: %2", "Mount at RA: %1   DEC: %2", ra_dms, dec_dms));
 
         telescopeCoord.setRA(coord->np[0].value);
         telescopeCoord.setDec(coord->np[1].value);
@@ -839,19 +843,37 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
             }
         }
 
+        
+        appendLogText(xi18nc("AZ Stage: %1", "AZ Stage: %1", azStage));
         switch (azStage)
         {
-             case AZ_SYNCING:
-            if (currentTelescope->isSlewing())
-                azStage=AZ_SLEWING;
-                break;
+            case AZ_SYNCING:
+	    {
+	       if (currentTelescope->isSlewing())
+	       {
+		   appendLogText(xi18n("AZ_SYNCING -> AZ_SLEWING"));
+                   azStage=AZ_SLEWING;
+	       }
+	       else
+	       {
+		 appendLogText(xi18n("AZ_SYNCING -> AZ_SYNCING"));
+	       }
+	    }
+            break;
 
             case AZ_SLEWING:
-            if (currentTelescope->isSlewing() == false)
-            {
-                azStage = AZ_SECOND_TARGET;
-                measureAzError();
-            }
+	    {
+		if (currentTelescope->isSlewing() == false)
+		{
+		    appendLogText(xi18n("AZ_SLEWING -> AZ_SECOND_TARGET"));
+		    azStage = AZ_SECOND_TARGET;
+		    measureAzError();
+		}
+		else
+		{
+		  appendLogText(xi18n("AZ_SLEWING -> AZ_SLEWING"));
+		}
+	    }
             break;
 
         case AZ_CORRECTING:
@@ -992,6 +1014,8 @@ void Align::measureAzError()
     static double initRA=0, initDEC=0, finalRA=0, finalDEC=0;
     int hemisphere = KStarsData::Instance()->geo()->lat()->Degrees() > 0 ? 0 : 1;
 
+    appendLogText(xi18nc("measureAzError(): azStage = %1", "measureAzError(): state: %1", azStage));
+
     switch (azStage)
     {
         case AZ_INIT:
@@ -1019,14 +1043,19 @@ void Align::measureAzError()
         // Now move 30 arcminutes in RA
         if (canSync)
         {
+ 	    appendLogText(xi18n("Synchronizing position and slewing..."));
             azStage = AZ_SYNCING;
             currentTelescope->Sync(initRA/15.0, initDEC);
-            currentTelescope->Slew((initRA - RAMotion)/15.0, initDEC);
+            if(!currentTelescope->Slew((initRA - RAMotion)/15.0, initDEC))
+	    {
+	      appendLogText(xi18n("Error: Slew failed!"));
+	    };
         }
         // If telescope doesn't sync, we slew relative to its current coordinates
         else
         {
             azStage = AZ_SLEWING;
+	    appendLogText(xi18n("Slewing..."));
             currentTelescope->Slew(telescopeCoord.ra().Hours() - RAMotion/15.0, telescopeCoord.dec().Degrees());
         }
 
