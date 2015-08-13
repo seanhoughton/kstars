@@ -190,7 +190,7 @@ bool OfflineAstrometryParser::startSovler(const QString &filename,  const QStrin
 
     align->appendLogText(xi18n("Starting solver..."));
 
-    if (align->isVerbose())
+    if (align->isSolverVerbose())
     {
         QString command = Options::astrometrySolver() + " " + solverArgs.join(" ");
         align->appendLogText(command);
@@ -290,7 +290,7 @@ void OfflineAstrometryParser::wcsinfoComplete(int exist_status)
 
 void OfflineAstrometryParser::logSolver()
 {
-    if (align->isVerbose())
+    if (align->isSolverVerbose())
         align->appendLogText(solver.readAll().trimmed());
 }
 

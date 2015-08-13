@@ -93,7 +93,7 @@ Align::Align()
     kcfg_solverXBin->setValue(Options::solverXBin());
     kcfg_solverYBin->setValue(Options::solverYBin());
     kcfg_solverUpdateCoords->setChecked(Options::solverUpdateCoords());
-    kcfg_solverPreview->setChecked(Options::solverPreview());    
+    kcfg_solverPreview->setChecked(Options::solverPreview());
 
     unsigned int solverGotoOption = Options::solverGotoOption();
     if (solverGotoOption == 0)
@@ -127,7 +127,7 @@ Align::Align()
     if (kcfg_onlineSolver->isChecked())
     {
         onlineParser = new Ekos::OnlineAstrometryParser();
-        parser = onlineParser;  
+        parser = onlineParser;
     }
     else
     {
@@ -168,9 +168,14 @@ bool Align::isParserOK()
     return rc;
 }
 
-bool Align::isVerbose()
+bool Align::isSolverVerbose()
 {
     return kcfg_solverVerbose->isChecked();
+}
+
+bool Align::isPolarAlignVerbose()
+{
+    return kcfg_polarAlignVerbose->isChecked();
 }
 
 void Align::setSolverType(bool useOnline)
@@ -312,7 +317,7 @@ void Align::syncCCDInfo()
     int x,y;
 
     if (currentCCD == NULL)
-        return;    
+        return;
 
     if (useGuideHead)
         nvp = currentCCD->getBaseDevice()->getNumber("GUIDER_INFO");
@@ -332,7 +337,7 @@ void Align::syncCCDInfo()
         np = IUFindNumber(nvp, "CCD_PIXEL_SIZE_Y");
         if (np && np->value >0)
             ccd_ver_pixel = np->value;
-    }    
+    }
 
     ISD::CCDChip *targetChip = currentCCD->getChip(useGuideHead ? ISD::CCDChip::GUIDE_CCD : ISD::CCDChip::PRIMARY_CCD);
 
@@ -357,7 +362,7 @@ void Align::syncCCDInfo()
     if (ccd_hor_pixel == -1 || ccd_ver_pixel == -1)
         return;
 
-    if (ccd_hor_pixel != -1 && ccd_ver_pixel != -1 && focal_length != -1 && aperture != -1)    
+    if (ccd_hor_pixel != -1 && ccd_ver_pixel != -1 && focal_length != -1 && aperture != -1)
         calculateFOV();
 
     if (currentCCD && currentTelescope)
@@ -377,7 +382,7 @@ void Align::calculateFOV()
 
     solverFOV->setSize(fov_x, fov_y);
 
-    FOVOut->setText(QString("%1' x %2'").arg(fov_x, 0, 'g', 3).arg(fov_y, 0, 'g', 3));    
+    FOVOut->setText(QString("%1' x %2'").arg(fov_x, 0, 'g', 3).arg(fov_y, 0, 'g', 3));
 
 }
 
@@ -661,12 +666,12 @@ void Align::solverFinished(double orientation, double ra, double dec, double pix
     ISD::CCDChip *targetChip = currentCCD->getChip(useGuideHead ? ISD::CCDChip::GUIDE_CCD : ISD::CCDChip::PRIMARY_CCD);
     targetChip->getBinning(&binx, &biny);
 
-    if (isVerbose())
+    if (isSolverVerbose())
         appendLogText(xi18n("Solver RA (%1) DEC (%2) Orientation (%3) Pixel Scale (%4)", QString::number(ra, 'g' , 5), QString::number(dec, 'g' , 5),
                             QString::number(orientation, 'g' , 5), QString::number(pixscale, 'g' , 5)));
 
     if (pixscale > 0)
-    {        
+    {
         double solver_focal_length = (206.264 * ccd_hor_pixel) / pixscale * binx;
         if (fabs(focal_length - solver_focal_length) > 1)
             appendLogText(xi18n("Current focal length is %1 mm while computed focal length from the solver is %2 mm. Please update the mount focal length to obtain accurate results.",
@@ -802,14 +807,13 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
 {
     QString ra_dms, dec_dms;
     static bool slew_dirty=false;
-    
-    appendLogText(xi18nc("processTelescopeNumber(): %1", "processTelescopeNumber(): %1", coord->name));
 
     if (!strcmp(coord->name, "EQUATORIAL_EOD_COORD"))
-    {        
+    {
         getFormattedCoords(coord->np[0].value, coord->np[1].value, ra_dms, dec_dms);
-	
-	appendLogText(xi18nc("Mount at RA: %1   DEC: %2", "Mount at RA: %1   DEC: %2", ra_dms, dec_dms));
+
+        //if(isPolarAlignVerbose())
+        //    appendLogText(xi18nc("Telescope now at RA: %1   DEC: %2", "Mount at RA: %1   DEC: %2", ra_dms, dec_dms));
 
         telescopeCoord.setRA(coord->np[0].value);
         telescopeCoord.setDec(coord->np[1].value);
@@ -820,7 +824,6 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
 
         if (kcfg_solverUpdateCoords->isChecked())
         {
-
             if (currentTelescope->isSlewing() && slew_dirty == false)
                 slew_dirty = true;
             else if (currentTelescope->isSlewing() == false && slew_dirty)
@@ -843,76 +846,102 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
             }
         }
 
-        
-        appendLogText(xi18nc("AZ Stage: %1", "AZ Stage: %1", azStage));
         switch (azStage)
         {
             case AZ_SYNCING:
-	    {
-	       if (currentTelescope->isSlewing())
-	       {
-		   appendLogText(xi18n("AZ_SYNCING -> AZ_SLEWING"));
-                   azStage=AZ_SLEWING;
-	       }
-	       else
-	       {
-		 appendLogText(xi18n("AZ_SYNCING -> AZ_SYNCING"));
-	       }
-	    }
+    	    {
+    	       if (currentTelescope->isSlewing())
+    	       {
+		            if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope sync complete, slewing to second target started."));
+                    azStage = AZ_SLEWING;
+    	       }
+    	       else
+    	       {
+                    if(isPolarAlignVerbose())
+    		            appendLogText(xi18n("Telescope is not slewing, waiting for sync to complete..."));
+    	       }
+    	    }
             break;
 
             case AZ_SLEWING:
-	    {
-		if (currentTelescope->isSlewing() == false)
-		{
-		    appendLogText(xi18n("AZ_SLEWING -> AZ_SECOND_TARGET"));
-		    azStage = AZ_SECOND_TARGET;
-		    measureAzError();
-		}
-		else
-		{
-		  appendLogText(xi18n("AZ_SLEWING -> AZ_SLEWING"));
-		}
-	    }
+    	    {
+        		if (currentTelescope->isSlewing() == false)
+        		{
+        		    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope has completed slewing to second target."));
+        		    azStage = AZ_SECOND_TARGET;
+        		    measureAzError();
+        		}
+        		else
+        		{
+        		    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope is still slewing to second target..."));
+        		}
+    	    }
             break;
 
-        case AZ_CORRECTING:
-         if (currentTelescope->isSlewing() == false)
-         {
-             appendLogText(xi18n("Slew complete. Please adjust azimuth knob until the target is in the center of the view."));
-             azStage = AZ_INIT;
-         }
-         break;
+            case AZ_CORRECTING:
+            {
+                if (currentTelescope->isSlewing() == false)
+                {
+                    appendLogText(xi18n("Slew complete. Please adjust azimuth knob until the target is in the center of the view."));
+                    azStage = AZ_INIT;
+                }
+            }
+            break;
 
-           default:
+            default:
             break;
         }
 
         switch (altStage)
         {
-           case ALT_SYNCING:
-            if (currentTelescope->isSlewing())
-                altStage = ALT_SLEWING;
-                break;
-
-           case ALT_SLEWING:
-            if (currentTelescope->isSlewing() == false)
+            case ALT_SYNCING:
             {
-                altStage = ALT_SECOND_TARGET;
-                measureAltError();
+                if (currentTelescope->isSlewing())
+                {
+                    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope sync complete, slewing started."));
+                    altStage = ALT_SLEWING;
+                }
+                else
+                {
+                    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope is not slewing, waiting for sync to complete..."));
+                }
             }
             break;
 
-           case ALT_CORRECTING:
-            if (currentTelescope->isSlewing() == false)
-            {                
-                appendLogText(xi18n("Slew complete. Please adjust altitude knob until the target is in the center of the view."));
-                altStage = ALT_INIT;
+            case ALT_SLEWING:
+            {
+                if (currentTelescope->isSlewing() == false)
+                {
+                    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope has completed slewing to second target."));
+                    altStage = ALT_SECOND_TARGET;
+                    measureAltError();
+                }
+                else
+                {
+                    if(isPolarAlignVerbose())
+                        appendLogText(xi18n("Telescope is still slewing to second target..."));
+                }
+            }
+            break;
+
+            case ALT_CORRECTING:
+            {
+                if (currentTelescope->isSlewing() == false)
+                {
+                    appendLogText(xi18n("Slew complete. Please adjust altitude knob until the target is in the center of the view."));
+                    altStage = ALT_INIT;
+                }
             }
             break;
 
 
-           default:
+            default:
             break;
         }
     }
@@ -932,7 +961,7 @@ void Align::executeMode()
 
 
 void Align::executeGOTO()
-{        
+{
     if (loadSlewMode)
     {
         targetCoord = alignCoord;
@@ -1013,8 +1042,6 @@ void Align::measureAzError()
 {
     static double initRA=0, initDEC=0, finalRA=0, finalDEC=0;
     int hemisphere = KStarsData::Instance()->geo()->lat()->Degrees() > 0 ? 0 : 1;
-
-    appendLogText(xi18nc("measureAzError(): azStage = %1", "measureAzError(): state: %1", azStage));
 
     switch (azStage)
     {
@@ -1500,9 +1527,9 @@ void Align::setWCS(bool enable)
 
         IUResetSwitch(wcsControl);
         if (enable)
-            wcs_enable->s  = ISS_ON;            
+            wcs_enable->s  = ISS_ON;
         else
-        {            
+        {
             wcs_disable->s = ISS_ON;
             m_wcsSynced=false;
         }
@@ -1514,5 +1541,3 @@ void Align::setWCS(bool enable)
 }
 
 }
-
-

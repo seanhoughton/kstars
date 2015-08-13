@@ -151,7 +151,7 @@ public:
      * @brief Set the current telescope
      * @newTelescope pointer to telescope device.
      */
-    void setTelescope(ISD::GDInterface *newTelescope);    
+    void setTelescope(ISD::GDInterface *newTelescope);
 
     /**
      * @brief CCD information is updated, sync them.
@@ -161,7 +161,7 @@ public:
     /**
      * @brief Generate arguments we pass to the online and offline solvers. Keep user own arguments in place.
      */
-    void generateArgs();        
+    void generateArgs();
 
     /**
      * @brief Does our parser exist in the system?
@@ -171,7 +171,8 @@ public:
     /**
      * @brief Are we displaying verbose information?
      */
-    bool isVerbose();
+    bool isSolverVerbose();
+    bool isPolarAlignVerbose();
 
     // Log
     void appendLogText(const QString &);
