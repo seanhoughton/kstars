@@ -3,7 +3,7 @@
 
 /** \file SkipListElement.h
   Interface for skip list elements
-  See William Pugh's paper: 
+  See William Pugh's paper:
     Skip Lists: A Probabilistic Alternative to Balanced Trees
   \author: Bruno Grossniklaus, 13.11.97
   \version: 1.0
@@ -19,7 +19,7 @@
 #ifdef _WIN32
 #define KEY_MAX _I64_MAX
 #else
-#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || ( defined(__SUNPRO_CC) && defined(__sun) )
+#  if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || ( defined(__SUNPRO_CC) && defined(__sun) ) || defined(__APPLE__)
 #    define KEY_MAX LLONG_MAX
 #  else
 #    define KEY_MAX LONG_LONG_MAX
@@ -39,7 +39,7 @@ public:
     Key getKey() const   { return myKey; };
     /** set key of element */
     void setKey(Key key) { myKey = key; };
-  
+
     /** get value of element */
     Value getValue() const     { return myValue;}
     /** set value of element */
@@ -51,10 +51,10 @@ public:
     void setLevel(long level) { myLevel = level; }
 
     /** get next element in level */
-    SkipListElement* getElement(long level); 
+    SkipListElement* getElement(long level);
     /** set next element in level */
     void setElement(long level, SkipListElement* element);
-  
+
 private:
     long myLevel;  // level of element
     Key myKey;     // key of element

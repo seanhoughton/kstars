@@ -302,7 +302,7 @@ bool FITSData::loadFITS ( const QString &inFilename, QProgressDialog *progress )
     if (mode == FITS_NORMAL && progress)
         progress->setValue(80);
 
-    qApp->processEvents();    
+    qApp->processEvents();
 
     if (mode == FITS_NORMAL)
     {
@@ -1131,7 +1131,7 @@ void FITSData::applyFilter(FITSScale type, float *image, double min, double max)
       break;
 
      case FITS_HIGH_CONTRAST:
-     {        
+     {
         min = stats.average + stats.stddev;
         if (min < 0)
             min =0;
@@ -1999,7 +1999,7 @@ bool FITSData::checkDebayer()
       return false;
 
   fits_read_key(fptr, TINT, "XBAYROFF", &debayerParams.offsetX, NULL, &status);
-  fits_read_key(fptr, TINT, "YBAYROFF", &debayerParams.offsetY, NULL, &status); 
+  fits_read_key(fptr, TINT, "YBAYROFF", &debayerParams.offsetY, NULL, &status);
 
   delete[] bayer_buffer;
   bayer_buffer = new float[stats.size * channels];
@@ -2106,10 +2106,10 @@ double FITSData::getADUPercentage()
              return (stats.average / INT_MAX) * 100.0;
              break;
         case 64:
-             return (stats.average / ULONG_LONG_MAX) * 100.0;
+             return (stats.average / ULLONG_MAX) * 100.0;
              break;
         case -64:
-             return (stats.average / LONG_LONG_MAX) * 100.0;
+             return (stats.average / LLONG_MAX) * 100.0;
         default:
             return 0;
             break;

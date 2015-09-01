@@ -15,14 +15,14 @@
 #include <sys/types.h>
 
 // define some colors
-const u_char DEF_BKGD_COLOR[3] 		= {0, 0, 0};
-const u_char DEF_RA_COLOR[3]		= {0, 255, 0};
-const u_char DEF_DEC_COLOR[3]		= {0, 165, 255};
-const u_char DEF_GRID_COLOR[3]		= {128, 128, 128};
-const u_char DEF_WHITE_COLOR[3]		= {255, 255, 255};
-const u_char DEF_GRID_FONT_COLOR[3]	= {0, 255, 128};
+const uint8_t DEF_BKGD_COLOR[3] 		= {0, 0, 0};
+const uint8_t DEF_RA_COLOR[3]		= {0, 255, 0};
+const uint8_t DEF_DEC_COLOR[3]		= {0, 165, 255};
+const uint8_t DEF_GRID_COLOR[3]		= {128, 128, 128};
+const uint8_t DEF_WHITE_COLOR[3]		= {255, 255, 255};
+const uint8_t DEF_GRID_FONT_COLOR[3]	= {0, 255, 128};
 
-const u_char DEF_SQR_OVL_COLOR[3]	= {0, 255, 0};
+const uint8_t DEF_SQR_OVL_COLOR[3]	= {0, 255, 0};
 
 void u_msg( const char *fmt, ...)
 {
@@ -45,4 +45,3 @@ void u_msg( const char *fmt, ...)
 
         //QMessageBox::information( this, "Info...", QString().sprintf("test = %d", 13), QMessageBox::Ok, QMessageBox::Ok );
 }
-
