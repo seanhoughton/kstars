@@ -58,10 +58,12 @@ public:
                                            , Dec0(d)
                                            , RA(r)
                                            , Dec(d)
+                                           , Alt(0)
+                                           , Az(0)
                                            , lastPrecessJD( J2000 )
     {}
 
-    
+
     /** Alternate constructor using double arguments, for convenience.
      *It behaves essentially like the default constructor.
      *@param r Right Ascension, expressed as a double
@@ -73,9 +75,11 @@ public:
                                             , Dec0(d)
                                             , RA(r*15.0)
                                             , Dec(d)
+                                            , Alt(0)
+                                            , Az(0)
                                             , lastPrecessJD( J2000 )
     {}
-    
+
     /**
      *@short Default constructor. Sets nonsense values for RA, Dec etc
      */
@@ -313,7 +317,7 @@ public:
     SkyPoint Eterms(void);
 
     /** Exact precession from Besselian epoch 1950 to epoch J2000. The
-    *coordinates referred to the first epoch are in the 
+    *coordinates referred to the first epoch are in the
     FK4 catalog, while the latter are in the Fk5 one.
     *Reference: Smith, C. A.; Kaplan, G. H.; Hughes, J. A.; Seidelmann,
     *P. K.; Yallop, B. D.; Hohenkerk, C. Y.
@@ -327,7 +331,7 @@ public:
     void B1950ToJ2000(void);
 
     /** Exact precession from epoch J2000 Besselian epoch 1950. The coordinates
-    *referred to the first epoch are in the FK4 catalog, while the 
+    *referred to the first epoch are in the FK4 catalog, while the
     *latter are in the Fk5 one.
     *Reference: Smith, C. A.; Kaplan, G. H.; Hughes, J. A.; Seidelmann,
     *P. K.; Yallop, B. D.; Hohenkerk, C. Y.
@@ -348,9 +352,9 @@ public:
     void addEterms(void);
 
     /** Coordinates in the FK4 catalog include the effect of aberration due
-     *to the ellipticity of the orbit of the Earth. Coordinates in the FK5 
-     *catalog do not include these terms. In order to convert from 
-     * FK5 coordinates to B1950 (FK4) one has to use this function. 
+     *to the ellipticity of the orbit of the Earth. Coordinates in the FK5
+     *catalog do not include these terms. In order to convert from
+     * FK5 coordinates to B1950 (FK4) one has to use this function.
     */
     void subtractEterms(void);
 
@@ -361,7 +365,7 @@ public:
      *  the coordinates of the second object.
      *  However this algorithm is not accurate when the angular separation
      *  is small.
-     *  Meeus provides a different algorithm in page 111 which we 
+     *  Meeus provides a different algorithm in page 111 which we
      *  implement here.
      *  @param sp SkyPoint to which distance is to be calculated
      *  @param positionAngle if a non-null pointer is passed, the position angle [E of N] in degrees from this SkyPoint to sp is computed and stored in the passed variable.
@@ -393,7 +397,7 @@ public:
     double vHeliocentric(double vlsr, long double jd);
 
     /** Computes the radial velocity of a source referred to the Local Standard of Rest, also known as VLSR
-     * from the radial velocity referred to the solar system barycenter 
+     * from the radial velocity referred to the solar system barycenter
      *
      * @param vhelio radial velocity of the source referred to the LSR in km/s
      * @param jd Epoch expressed as julian day to which the source coordinates refer to.
@@ -410,7 +414,7 @@ public:
     /** Computes the radial velocity of a source referred to the center of the earth
      * from the radial velocity referred to the solar system barycenter
      *
-     * @param vhelio radial velocity of the source referred to the barycenter of the 
+     * @param vhelio radial velocity of the source referred to the barycenter of the
      *               solar system in km/s
      * @param jd     Epoch expressed as julian day to which the source coordinates refer to.
      * @return Radial velocity of the source referred to the center of the Earth in km/s
@@ -418,7 +422,7 @@ public:
     double vGeocentric(double vhelio, long double jd);
 
     /** Computes the radial velocity of a source referred to the solar system barycenter
-     * from the velocity referred to the center of the earth 
+     * from the velocity referred to the center of the earth
      *
      * @param vgeo   radial velocity of the source referred to the center of the Earth
      *               [km/s]
@@ -445,7 +449,7 @@ public:
     double vTopocentric(double vgeo, double vsite[3]);
 
     /** Computes the radial velocity of a source referred to the center of the Earth from
-     * the radial velocity referred to an observer site on the surface of the earth 
+     * the radial velocity referred to an observer site on the surface of the earth
      *
      * @param vtopo radial velocity of the source referred to the observer's site in km/s
      * @param vsite Velocity at which the observer moves referred to the center of the earth.

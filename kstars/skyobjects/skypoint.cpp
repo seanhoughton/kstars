@@ -34,7 +34,10 @@
 KSSun *SkyPoint::m_Sun = 0;
 const double SkyPoint::altCrit = -1.0;
 
-SkyPoint::SkyPoint() {
+SkyPoint::SkyPoint()
+: Alt(0)
+, Az(0)
+{
     // Default constructor. Set nonsense values
     RA0.setD(-1); // RA >= 0 always :-)
     Dec0.setD(180); // Dec is between -90 and 90 Degrees :-)
