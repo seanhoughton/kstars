@@ -60,7 +60,10 @@ public:
                                            , RA(r)
                                            , Dec(d)
                                            , lastPrecessJD( J2000 )
-    {}
+    {
+        Alt.setD(-1);
+        Az.setD(180);
+    }
 
     
     /** Alternate constructor using double arguments, for convenience.
@@ -75,7 +78,10 @@ public:
                                             , RA(r*15.0)
                                             , Dec(d)
                                             , lastPrecessJD( J2000 )
-    {}
+    {
+        Alt.setD(-1);
+        Az.setD(180);
+    }
     
     /**
      *@short Default constructor. Sets nonsense values for RA, Dec etc

@@ -41,6 +41,8 @@ SkyPoint::SkyPoint() {
     RA = RA0;
     Dec = Dec0;
     lastPrecessJD = J2000; // By convention, we use J2000 coordinates
+    Alt.setD(-1);
+    Az.setD(180);
 }
 
 void SkyPoint::set( const dms& r, const dms& d ) {
