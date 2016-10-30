@@ -1,5 +1,5 @@
 language: c++
-script: cd build && make
+compiler: clang
 osx_image: xcode8
 
 before_install:
@@ -24,3 +24,5 @@ before_script:
   - mkdir build
   - cd build
   - cmake ..
+
+script: cd build && make
