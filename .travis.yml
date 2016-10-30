@@ -1,5 +1,9 @@
 language: c++
 compiler: clang
+os:
+  #- linux
+  - osx
+
 osx_image: xcode8
 
 before_install:
