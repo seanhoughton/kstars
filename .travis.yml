@@ -1,5 +1,6 @@
 language: c++
 script: cd build && make
+osx_image: xcode8
 
 before_install:
   - brew update
