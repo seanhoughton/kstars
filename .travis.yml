@@ -13,7 +13,7 @@ before_install:
   - brew install eigen
   - brew install gettext
   - brew install astrometry-net
-  - brew install qt5 --with-dbus
+  - travis_wait 600 brew install qt5 --with-dbus
   - brew tap haraldf/kf5
   - haraldf/kf5/kf5-kplotting
   - haraldf/kf5/kf5-kxmlgui
