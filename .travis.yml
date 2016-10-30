@@ -1,0 +1,25 @@
+language: c++
+script: cd build && make
+
+before_install:
+  - brew update
+  - brew tap homebrew/science
+  - brew install cfitsio
+  - brew install eigen
+  - brew install gettext
+  - brew install astrometry-net
+  - brew install qt5 --with-dbus
+  - brew tap haraldf/kf5
+  - haraldf/kf5/kf5-kplotting
+  - haraldf/kf5/kf5-kxmlgui
+  - haraldf/kf5/kf5-knewstuff
+  - haraldf/kf5/k5f-kdoctools
+  - haraldf/kf5/kf5-knotifications
+  - haraldf/kf5/kf5-kcrash
+  - brew tap polakovic/astronomy
+  - brew install polakovic/astronomy/libindi
+
+before_script:
+  - mkdir build
+  - cd build
+  - cmake ..
