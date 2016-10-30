@@ -24,9 +24,18 @@ before_install:
   - brew tap polakovic/astronomy
   - brew install polakovic/astronomy/libindi
 
+install: true
+
 before_script:
   - mkdir build
   - cd build
+  - export PATH=$PATH:$(brew --prefix gettext)/bin
+  - export Qt5_DIR=$(brew --prefix qt5)
+  - export Qt5DBus_DIR=$Qt5_DIR
+  - export Qt5Test_DIR=$Qt5_DIR
+  - export Qt5Network_DIR=$Qt5_DIR
   - cmake ..
 
-script: cd build && make
+script:
+  - cd build
+  - make
