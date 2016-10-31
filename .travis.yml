@@ -16,12 +16,12 @@ before_install:
   #- travis_wait 600 brew install qt5 --with-dbus
   - brew install qt5
   - brew tap haraldf/kf5
-  - haraldf/kf5/kf5-kplotting
-  - haraldf/kf5/kf5-kxmlgui
-  - haraldf/kf5/kf5-knewstuff
-  - haraldf/kf5/k5f-kdoctools
-  - haraldf/kf5/kf5-knotifications
-  - haraldf/kf5/kf5-kcrash
+  - brew install haraldf/kf5/kf5-kplotting
+  - brew install haraldf/kf5/kf5-kxmlgui
+  - brew install haraldf/kf5/kf5-knewstuff
+  - brew install haraldf/kf5/k5f-kdoctools
+  - brew install haraldf/kf5/kf5-knotifications
+  - brew install haraldf/kf5/kf5-kcrash
   - brew tap polakovic/astronomy
   - brew install polakovic/astronomy/libindi
 
