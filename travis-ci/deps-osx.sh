@@ -15,7 +15,7 @@ curl -o /usr/local/Cellar.tgz ${CELLAR_URL}
 cd /usr/local
 
 echo "Extracting Cellar..."
-tar xvfz Cellar.tgz
+tar xfz Cellar.tgz
 
 echo "Linking Cellar..."
 brew link
