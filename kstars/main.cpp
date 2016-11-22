@@ -42,6 +42,7 @@
 #include "kspaths.h"
 
 #include "kstarsdata.h"
+#include "ksutils.h"
 #include "kstarsdatetime.h"
 #include "simclock.h"
 #include "ksnumbers.h"
@@ -61,15 +62,20 @@ int main(int argc, char *argv[])
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
     QApplication app(argc, argv);
+
+#ifdef Q_OS_OSX
+    //Note, this function will return true on OS X if the data directories are good to go.  If not, quit with error code 1!
+    if(!KSUtils::copyDataFolderFromAppBundleIfNeeded()){
+        KMessageBox::sorry(0, i18n("Sorry, without a KStars Data Directory, KStars cannot operate. Exiting program now."));
+        return 1;
+    }
+#endif
     app.setApplicationVersion(KSTARS_VERSION);
     /**
     * enable high dpi support
     */
      app.setAttribute(Qt::AA_UseHighDpiPixmaps, true);
 
-    QByteArray data = "1";
-
-    //qputenv("QSG_RENDER_TIMING", data);
     KLocalizedString::setApplicationDomain("kstars");    
 #ifndef KSTARS_LITE
     KCrash::initialize();
@@ -160,7 +166,6 @@ int main(int argc, char *argv[])
                        << "  Height: " << parser.value( "height" ) << endl;
             return 1;
         }
-
         KStarsData *dat = KStarsData::Create();
         QObject::connect( dat, SIGNAL( progressText(QString) ), dat, SLOT( slotConsoleMessage(QString) ) );
         dat->initialize();

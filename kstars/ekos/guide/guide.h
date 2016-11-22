@@ -148,9 +148,9 @@ public:
 
     /** DBUS interface function.
      * Set guiding algorithm. The options must be set before starting the guiding operation. If no options are set, the options loaded from the user configuration are used.
-     * @param algorithm Select the algorithm used to calculate the centroid of the guide star (Smart, Fast, Auto, No thresh).
+     * @param index Select the algorithm used to calculate the centroid of the guide star (0 --> Smart, 1 --> Fast, 2 --> Auto, 3 --> No thresh).
      */
-    Q_SCRIPTABLE Q_NOREPLY void setGuideAlgorithm(const QString & algorithm);    
+    Q_SCRIPTABLE Q_NOREPLY void setGuideAlgorithmIndex(int index);
 
     /** DBUS interface function.
      * Set rapid guiding option. The options must be set before starting the guiding operation. If no options are set, the options loaded from the user configuration are used.
@@ -195,7 +195,6 @@ public:
     QVector3D getStarPosition() { return starCenter; }
 
     // Tracking Box
-    void setTrackingBoxSize(int index) { boxSizeCombo->setCurrentIndex(index); }
     int getTrackingBoxSize() { return boxSizeCombo->currentText().toInt(); }
 
     //void startRapidGuide();
@@ -283,7 +282,7 @@ public slots:
       * @param exposure numbers of seconds left in the exposure
       * @param state State of the exposure property
       */
-     void checkExposureValue(ISD::CCDChip *targetChip, double exposure, IPState state);
+     void checkExposureValue(ISD::CCDChip *targetChip, double exposure, IPState expState);
 
      /**
       * @brief newFITS is called by the INDI framework whenever there is a new BLOB arriving
@@ -310,6 +309,11 @@ public slots:
 
      // Update Guide module status
      void setStatus(Ekos::GuideState newState);
+
+     // Update Capture Module status
+     void setCaptureStatus(Ekos::CaptureState newState);
+     // Update Mount module status
+     void setMountStatus(ISD::Telescope::TelescopeStatus newState);
 
      // Star Position
      void setStarPosition(const QVector3D &newCenter, bool updateNow);
@@ -369,7 +373,9 @@ protected slots:
 
      void processGuideOptions();
 
-     void onControlDirectionChanged(bool enable);     
+     void onControlDirectionChanged(bool enable);
+
+     void showFITSViewer();
 
 signals:
     void newLog();
@@ -491,6 +497,7 @@ private:
     QPointer<InternalGuider> internalGuider;
     QPointer<PHD2> phd2Guider;
     QPointer<LinGuider> linGuider;
+    QPointer<FITSViewer> fv;
 };
 
 }

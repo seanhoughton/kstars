@@ -140,7 +140,7 @@ void PHD2::readPHD2()
         }
 
         if (Options::guideLogging())
-            emit newLog(rawString);
+            qDebug() << "Guide: " << rawString;
 
         processJSON(jdoc.object());
     }
@@ -338,9 +338,6 @@ void PHD2::processPHD2Event(const QJsonObject &jsonEvent)
             {
                 state = DITHER_SUCCESSFUL;
                 emit newStatus(Ekos::GUIDE_DITHERING_SUCCESS);
-
-                // Back to guiding
-                emit newStatus(Ekos::GUIDE_GUIDING);
             }
         }
     }

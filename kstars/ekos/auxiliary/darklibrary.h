@@ -34,7 +34,8 @@ public:
 
     FITSData * getDarkFrame(ISD::CCDChip *targetChip, double duration);
     bool subtract(FITSData *darkData, FITSView *lightImage, FITSScale filter, uint16_t offsetX, uint16_t offsetY);
-    void captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetImage, double duration, uint16_t offsetX, uint16_t offsetY);
+    // Return false if canceled. True if dark capture proceeds
+    bool captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetImage, double duration, uint16_t offsetX, uint16_t offsetY);
 
 signals:
     void darkFrameCompleted(bool);
@@ -54,6 +55,8 @@ private:
 
   bool loadDarkFile(const QString &filename);
   bool saveDarkFile(FITSData *darkData);
+
+  template<typename T> bool subtract(FITSData *darkData, FITSView *lightImage, FITSScale filter, uint16_t offsetX, uint16_t offsetY);
 
   QList<QVariantMap> darkFrames;
   QHash<QString, FITSData *> darkFiles;

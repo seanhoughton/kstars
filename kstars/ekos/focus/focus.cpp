@@ -72,6 +72,9 @@ Focus::Focus()
     resetFocus        = false;    
     filterPositionPending= false;
 
+    waitStarSelectTimer.setInterval(AUTO_STAR_TIMEOUT);
+    connect(&waitStarSelectTimer, SIGNAL(timeout()), this, SLOT(checkAutoStarTimeout()));
+
     rememberUploadMode = ISD::CCD::UPLOAD_CLIENT;
     HFRInc =0;
     noStarCount=0;
@@ -94,6 +97,9 @@ Focus::Focus()
     minPos=1e6;
     maxPos=0;
     frameNum=0;
+
+    showFITSViewerB->setIcon(QIcon::fromTheme("kstars_fitsviewer", QIcon(":/icons/breeze/default/kstars_fitsviewer.svg")));
+    connect(showFITSViewerB, SIGNAL(clicked()), this, SLOT(showFITSViewer()));
 
     connect(startFocusB, SIGNAL(clicked()), this, SLOT(start()));
     connect(stopFocusB, SIGNAL(clicked()), this, SLOT(checkStopFocus()));
@@ -119,9 +125,6 @@ Focus::Focus()
     connect(setAbsTicksB, SIGNAL(clicked()), this, SLOT(setAbsoluteFocusTicks()));
     connect(binningCombo, SIGNAL(activated(int)), this, SLOT(setActiveBinning(int)));
     connect(focusBoxSize, SIGNAL(valueChanged(int)), this, SLOT(updateBoxSize(int)));
-
-    // Reset star center on auto star check toggle
-    connect(autoStarCheck, &QCheckBox::toggled, this, [&](){starCenter = QVector3D();});
 
     focusAlgorithm = static_cast<StarAlgorithm>(Options::focusAlgorithm());
     focusAlgorithmCombo->setCurrentIndex(focusAlgorithm);
@@ -232,7 +235,7 @@ Focus::Focus()
     connect(thresholdSpin, SIGNAL(valueChanged(double)), this, SLOT(setThreshold(double)));
     //connect(focusFramesSpin, SIGNAL(valueChanged(int)), this, SLOT(setFrames(int)));
 
-    focusView = new FITSView(focusingWidget);
+    focusView = new FITSView(focusingWidget, FITS_FOCUS);
     focusView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     focusView->setBaseSize(focusingWidget->size());
     QVBoxLayout *vlayout = new QVBoxLayout();
@@ -241,6 +244,9 @@ Focus::Focus()
     connect(focusView, SIGNAL(trackingStarSelected(int,int)), this, SLOT(focusStarSelected(int,int)), Qt::UniqueConnection);
 
     focusView->setStarsEnabled(true);
+
+    // Reset star center on auto star check toggle
+    connect(autoStarCheck, &QCheckBox::toggled, this, [&](bool enabled){if (enabled) { starCenter = QVector3D(); starSelected=false; focusView->setTrackingBox(QRect());}});
 }
 
 Focus::~Focus()
@@ -638,6 +644,8 @@ void Focus::start()
 
     lastFocusDirection = FOCUS_NONE;
 
+    waitStarSelectTimer.stop();
+
     lastHFR = 0;
 
     if (canAbsMove)
@@ -789,6 +797,8 @@ void Focus::capture()
         appendLogText(i18n("No CCD connected."));
         return;
     }
+
+    waitStarSelectTimer.stop();
 
     ISD::CCDChip *targetChip = currentCCD->getChip(ISD::CCDChip::PRIMARY_CCD);
 
@@ -974,10 +984,15 @@ void Focus::newFITS(IBLOB *bp)
         connect(DarkLibrary::Instance(), SIGNAL(darkFrameCompleted(bool)), this, SLOT(setCaptureComplete()));
         connect(DarkLibrary::Instance(), SIGNAL(newLog(QString)), this, SLOT(appendLogText(QString)));
 
+        targetChip->setCaptureFilter(defaultScale);
+
         if (darkData)
             DarkLibrary::Instance()->subtract(darkData, focusView, defaultScale, offsetX, offsetY);
         else
-            DarkLibrary::Instance()->captureAndSubtract(targetChip, focusView, exposureIN->value(), offsetX, offsetY);
+        {
+            bool rc = DarkLibrary::Instance()->captureAndSubtract(targetChip, focusView, exposureIN->value(), offsetX, offsetY);
+            darkFrameCheck->setChecked(rc);
+        }
 
         return;
     }
@@ -1027,6 +1042,21 @@ void Focus::setCaptureComplete()
             //if (autoStarCheck->isChecked() && subFramed == false)
                 //focusView->findStars(ALGORITHM_CENTROID);
 
+            currentHFR = -1;
+
+            if (starSelected)
+            {
+                focusView->findStars(focusAlgorithm);
+                focusView->updateFrame();
+                currentHFR= image_data->getHFR(HFR_MAX);
+            }
+            else
+            {
+                focusView->findStars(ALGORITHM_CENTROID);
+                focusView->updateFrame();
+                currentHFR= image_data->getHFR(HFR_MAX);
+            }
+            /*
             if (subFramed && focusView->isTrackingBoxEnabled())
             {
                 focusView->findStars(focusAlgorithm);
@@ -1038,7 +1068,7 @@ void Focus::setCaptureComplete()
                 focusView->findStars(ALGORITHM_CENTROID);
                 focusView->updateFrame();
                 currentHFR= image_data->getHFR(HFR_MAX);
-            }
+            }*/
         }
 
         if (Options::focusLogging())
@@ -1144,7 +1174,7 @@ void Focus::setCaptureComplete()
                 state = Ekos::FOCUS_WAITING;
                 emit newStatus(state);
 
-                QTimer::singleShot(AUTO_STAR_TIMEOUT, this, SLOT(checkAutoStarTimeout()));
+                waitStarSelectTimer.start();
 
                 return;
             }
@@ -1232,6 +1262,8 @@ void Focus::setCaptureComplete()
 
             state = Ekos::FOCUS_WAITING;
             emit newStatus(state);
+
+            waitStarSelectTimer.start();
             //connect(targetImage, SIGNAL(trackingStarSelected(int,int)), this, SLOT(focusStarSelected(int, int)), Qt::UniqueConnection);
             return;
         }
@@ -1976,6 +2008,8 @@ void Focus::startFraming()
         return;
     }
 
+    waitStarSelectTimer.stop();
+
     inFocusLoop = true;
     frameNum=0;
 
@@ -1994,7 +2028,6 @@ void Focus::startFraming()
 
 void Focus::resetButtons()
 {
-
     if (inFocusLoop)
     {
         startFocusB->setEnabled(false);
@@ -2002,8 +2035,6 @@ void Focus::resetButtons()
         stopFocusB->setEnabled(true);
 
         captureB->setEnabled(false);
-        focusOutB->setEnabled(true);
-        focusInB->setEnabled(true);
 
         return;
     }
@@ -2017,34 +2048,23 @@ void Focus::resetButtons()
         captureB->setEnabled(false);
         focusOutB->setEnabled(false);
         focusInB->setEnabled(false);
+        setAbsTicksB->setEnabled(false);
 
         return;
     }
 
-    if (focusType == FOCUS_AUTO && currentFocuser)
-        startFocusB->setEnabled(true);
-    else
-        startFocusB->setEnabled(false);
+    if (currentFocuser)
+    {
+        focusOutB->setEnabled(true);
+        focusInB->setEnabled(true);
+
+        startFocusB->setEnabled(focusType == FOCUS_AUTO);
+        setAbsTicksB->setEnabled(canAbsMove || canRelMove);
+
+    }
 
     stopFocusB->setEnabled(false);
     startLoopB->setEnabled(true);
-
-
-    /*if (focusType == FOCUS_MANUAL)
-    {
-        if (currentFocuser)
-        {
-            focusOutB->setEnabled(true);
-            focusInB->setEnabled(true);
-        }
-
-        startLoopB->setEnabled(true);
-    }
-    else
-    {
-        focusOutB->setEnabled(false);
-        focusInB->setEnabled(false);
-    }*/
 
     captureB->setEnabled(true);
 }
@@ -2176,7 +2196,10 @@ void Focus::focusStarSelected(int x, int y)
         starSelected = false;
     }
 
-    //targetImage->setTrackingBox(starRect);
+    waitStarSelectTimer.stop();
+    state = inAutoFocus ? FOCUS_PROGRESS : FOCUS_IDLE;
+
+    emit newStatus(state);
 }
 
 void Focus::checkFocus(double requiredHFR)
@@ -2291,6 +2314,11 @@ void Focus::checkAutoStarTimeout()
         abort();
         setAutoFocusResult(false);
     }
+    else if (state == FOCUS_WAITING)
+    {
+        state = FOCUS_IDLE;
+        emit newStatus(state);
+    }
 }
 
 void Focus::setAbsoluteFocusTicks()
@@ -2364,6 +2392,27 @@ void Focus::syncTrackingBoxPosition()
     }
 }
 
+void Focus::showFITSViewer()
+{
+    FITSData *data = focusView->getImageData();
+    if (data)
+    {
+        QUrl url = QUrl::fromLocalFile(data->getFilename());
+
+        if (fv.isNull())
+        {
+            if (Options::singleWindowCapturedFITS())
+                fv = KStars::Instance()->genericFITSViewer();
+            else
+                fv = new FITSViewer(Options::independentWindowFITS() ? NULL : KStars::Instance());
+
+            fv->addFITS(&url);
+        }
+        else
+            fv->updateFITS(&url, 0);
+
+        fv->show();
+    }
 }
 
-
+}

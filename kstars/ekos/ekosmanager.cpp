@@ -97,13 +97,17 @@ EkosManager::EkosManager(QWidget *parent) : QDialog(parent)
     mountPI=capturePI=focusPI=guidePI=NULL;
 
     captureProgress->setValue(0);
-    sequenceProgress->setValue(0);
+    sequenceProgress->setValue(0);    
     sequenceProgress->setDecimals(0);
     sequenceProgress->setFormat("%v");
+    imageProgress->setValue(0);
+    imageProgress->setDecimals(1);
+    imageProgress->setFormat("%v");
+    imageProgress->setBarStyle(QRoundProgressBar::StyleLine);
     countdownTimer.setInterval(1000);
     connect(&countdownTimer, SIGNAL(timeout()), this, SLOT(updateCaptureCountDown()));
 
-    toolsWidget->setIconSize(QSize(64,64));
+    toolsWidget->setIconSize(QSize(48,48));
     connect(toolsWidget, SIGNAL(currentChanged(int)), this, SLOT(processTabChange()));
 
     // Enable scheduler Tab
@@ -199,6 +203,8 @@ EkosManager::~EkosManager()
     delete previewPixmap;
     delete focusStarPixmap;    
     delete guideStarPixmap;
+
+    qDeleteAll(profiles);
 }
 
 void EkosManager::closeEvent(QCloseEvent * /*event*/)
@@ -310,6 +316,7 @@ void EkosManager::reset()
     captureProgress->setValue(0);
     overallRemainingTime->setText("--:--:--");
     sequenceRemainingTime->setText("--:--:--");
+    imageRemainingTime->setText("--:--:--");
     mountStatus->setText(i18n("Idle"));
     captureStatus->setText(i18n("Idle"));
     focusStatus->setText(i18n("Idle"));
@@ -349,6 +356,13 @@ bool EkosManager::start()
     if (localMode)
         qDeleteAll(managedDrivers);
     managedDrivers.clear();
+
+    // If clock was paused, unpaused it and sync time
+    if (KStarsData::Instance()->clock()->isActive() == false)
+    {
+        KStarsData::Instance()->changeDateTime( KStarsDateTime::currentDateTimeUtc() );
+        KStarsData::Instance()->clock()->start();
+    }
 
     reset();
 
@@ -723,6 +737,9 @@ void EkosManager::processNewDevice(ISD::GDInterface *devInterface)
     if (Options::verboseLogging())
         qDebug() << "Ekos received a new device: " << devInterface->getDeviceName();
 
+    // Always reset INDI Connection status if we receive a new device
+    indiConnectionStatus = EKOS_STATUS_IDLE;
+
     genericDevices.append(devInterface);
 
     nDevices--;
@@ -759,7 +776,7 @@ void EkosManager::deviceConnected()
         //qDebug() << "Connected Devices: " << nConnectedDevices << " nDevices: " << nDevices;
     }
 
-    ProfileInfo *pi = getCurrentProfile();
+    //ProfileInfo *pi = getCurrentProfile();
     //if (nConnectedDevices == managedDrivers.count() || (nDevices <=0 && nConnectedDevices == nRemoteDevices))
 
     int nConnectedDevices=0;
@@ -769,10 +786,18 @@ void EkosManager::deviceConnected()
             nConnectedDevices++;
     }
 
-    if (nConnectedDevices >= pi->drivers.count())
-        indiConnectionStatus = EKOS_STATUS_SUCCESS;
-
     qDebug() << "Ekos: " << nConnectedDevices << " devices connected out of " << genericDevices.count();
+
+    //if (nConnectedDevices >= pi->drivers.count())
+    if (nConnectedDevices >= genericDevices.count())
+    {
+        indiConnectionStatus = EKOS_STATUS_SUCCESS;
+        qDebug() << "Ekos: All INDI devices are now connected.";
+    }
+    else
+        indiConnectionStatus = EKOS_STATUS_PENDING;
+
+
 
     ISD::GDInterface *dev = static_cast<ISD::GDInterface *> (sender());
 
@@ -1277,7 +1302,7 @@ void EkosManager::processTabChange()
     //if (focusProcess && currentWidget != focusProcess)
          //focusProcess->resetFrame();
 
-    if (alignProcess && currentWidget == alignProcess)
+    if (alignProcess && alignProcess == currentWidget)
     {
         if (alignProcess->isEnabled() == false && captureProcess->isEnabled())
         {
@@ -1306,8 +1331,8 @@ void EkosManager::processTabChange()
 
 void EkosManager::updateLog()
 {
-    if (enableLoggingCheck->isChecked() == false)
-        return;
+    //if (enableLoggingCheck->isChecked() == false)
+        //return;
 
     QWidget *currentWidget = toolsWidget->currentWidget();
 
@@ -1375,9 +1400,11 @@ void EkosManager::initCapture()
     connect(captureProcess, SIGNAL(newLog()), this, SLOT(updateLog()));
     connect(captureProcess, SIGNAL(newStatus(Ekos::CaptureState)), this, SLOT(updateCaptureStatus(Ekos::CaptureState)));
     connect(captureProcess, SIGNAL(newImage(QImage*, Ekos::SequenceJob*)), this, SLOT(updateCaptureProgress(QImage*, Ekos::SequenceJob*)));
+    connect(captureProcess, SIGNAL(newExposureProgress(Ekos::SequenceJob*)), this, SLOT(updateExposureProgress(Ekos::SequenceJob*)));
     captureGroup->setEnabled(true);
     sequenceProgress->setEnabled(true);
     captureProgress->setEnabled(true);
+    imageProgress->setEnabled(true);
 
     capturePI = new QProgressIndicator(captureProcess);
     captureStatusLayout->addWidget(capturePI);
@@ -1403,16 +1430,11 @@ void EkosManager::initCapture()
 
     if (alignProcess)
     {
-        // Alignment flag
-        //connect(alignProcess, SIGNAL(solverComplete(bool)), captureProcess, SLOT(enableAlignmentFlag()), Qt::UniqueConnection);
-        //connect(alignProcess, SIGNAL(solverSlewComplete()), captureProcess, SLOT(checkAlignmentSlewComplete()), Qt::UniqueConnection);
-
+        // Alignment flag       
         connect(alignProcess, SIGNAL(newStatus(Ekos::AlignState)), captureProcess, SLOT(setAlignStatus(Ekos::AlignState)), Qt::UniqueConnection);
 
-        // Meridian Flip
-        //connect(captureProcess, SIGNAL(meridialFlipTracked()), alignProcess, SLOT(captureAndSolve()), Qt::UniqueConnection);
-        connect(captureProcess, &Ekos::Capture::newStatus, this, [&](Ekos::CaptureState state){if (state == Ekos::CAPTURE_ALIGNING)
-            {QTimer::singleShot(Options::settlingTime(), alignProcess, SLOT(captureAndSolve()));}}, Qt::UniqueConnection);
+        // Capture Status
+        connect(captureProcess, SIGNAL(newStatus(Ekos::CaptureState)), alignProcess, SLOT(setCaptureStatus(Ekos::CaptureState)), Qt::UniqueConnection);
 
     }
 
@@ -1443,17 +1465,10 @@ void EkosManager::initAlign()
 
     if (captureProcess)
     {
-        // Alignment flag
-        //connect(alignProcess, SIGNAL(solverComplete(bool)), captureProcess, SLOT(enableAlignmentFlag()), Qt::UniqueConnection);
-        //connect(alignProcess, SIGNAL(solverSlewComplete()), captureProcess, SLOT(checkAlignmentSlewComplete()), Qt::UniqueConnection);
-
-        // Meridian Flip
-        //connect(captureProcess, SIGNAL(meridialFlipTracked()), alignProcess, SLOT(captureAndSolve()), Qt::UniqueConnection);
-
+        // Align Status
         connect(alignProcess, SIGNAL(newStatus(Ekos::AlignState)), captureProcess, SLOT(setAlignStatus(Ekos::AlignState)), Qt::UniqueConnection);
-
-        connect(captureProcess, &Ekos::Capture::newStatus, this, [&](Ekos::CaptureState state){if (state == Ekos::CAPTURE_ALIGNING)
-            {QTimer::singleShot(Options::settlingTime(), alignProcess, SLOT(captureAndSolve()));}}, Qt::UniqueConnection);
+        // Capture Status
+        connect(captureProcess, SIGNAL(newStatus(Ekos::CaptureState)), alignProcess, SLOT(setCaptureStatus(Ekos::CaptureState)), Qt::UniqueConnection);
     }
 
     if (focusProcess)
@@ -1537,8 +1552,7 @@ void EkosManager::initMount()
 
     if (guideProcess)
     {
-        connect(mountProcess, &Ekos::Mount::newStatus, this, [&](ISD::Telescope::TelescopeStatus state){if (state == ISD::Telescope::MOUNT_PARKING)
-                guideProcess->abort();}, Qt::UniqueConnection);
+        connect(mountProcess, SIGNAL(newStatus(ISD::Telescope::TelescopeStatus)), guideProcess, SLOT(setMountStatus(ISD::Telescope::TelescopeStatus)), Qt::UniqueConnection);
     }
 
 }
@@ -1580,15 +1594,7 @@ void EkosManager::initGuide()
         connect(guideProcess, SIGNAL(newAxisDelta(double,double)), captureProcess, SLOT(setGuideDeviation(double,double)));
 
         // Dithering
-        //connect(guideProcess, SIGNAL(autoGuidingToggled(bool)), captureProcess, SLOT(setAutoguiding(bool)));
-        //connect(guideProcess, SIGNAL(ditherComplete()), captureProcess, SLOT(resumeCapture()));
-        //connect(guideProcess, SIGNAL(ditherFailed()), captureProcess, SLOT(abort()));
-        //connect(guideProcess, SIGNAL(ditherToggled(bool)), captureProcess, SLOT(setGuideDither(bool)));
-        //connect(captureProcess, SIGNAL(exposureComplete()), guideProcess, SLOT(dither()));
-        //connect(captureProcess, SIGNAL(exposureComplete()), guideProcess, SLOT(dither()));
-
-        connect(captureProcess, &Ekos::Capture::newStatus, this, [&](Ekos::CaptureState state){if (state == Ekos::CAPTURE_DITHERING)
-            {guideProcess->dither();}}, Qt::UniqueConnection);
+        connect(captureProcess, SIGNAL(newStatus(Ekos::CaptureState)), guideProcess, SLOT(setCaptureStatus(Ekos::CaptureState)), Qt::UniqueConnection);
 
 
         // Guide Head
@@ -1604,10 +1610,7 @@ void EkosManager::initGuide()
     if (mountProcess)
     {
         // Parking
-        //connect(captureProcess, SIGNAL(mountParking()), guideProcess, SLOT(stopGuiding()));
-        connect(mountProcess, &Ekos::Mount::newStatus, this, [&](ISD::Telescope::TelescopeStatus state){if (state == ISD::Telescope::MOUNT_PARKING)
-                guideProcess->abort();}, Qt::UniqueConnection);
-
+        connect(mountProcess, SIGNAL(newStatus(ISD::Telescope::TelescopeStatus)), guideProcess, SLOT(setMountStatus(ISD::Telescope::TelescopeStatus)), Qt::UniqueConnection);
     }
 
     if (focusProcess)
@@ -1902,6 +1905,8 @@ void EkosManager::updateCaptureStatus(Ekos::CaptureState status)
             capturePI->stopAnimation();
             countdownTimer.stop();
 
+            imageProgress->setValue(0);
+            imageRemainingTime->setText("--:--:--");
             overallRemainingTime->setText("--:--:--");
             sequenceRemainingTime->setText("--:--:--");
         }
@@ -1917,20 +1922,32 @@ void EkosManager::updateCaptureProgress(QImage *image, Ekos::SequenceJob *job)
         previewImage->setPixmap(previewPixmap->scaled(previewImage->width(), previewImage->height(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
 
-
     if (job->isPreview() == false)
     {
         // Image is set to NULL only on initial capture start up
-        int completed   = (image == NULL) ? job->getCompleted() : job->getCompleted()+1;
+        int completed   = (image == NULL) ? job->getCompleted() : job->getCompleted()+1;        
 
-        sequenceLabel->setText(QString("Job # %1/%2 %3 (%4/%5)").arg(captureProcess->getActiveJobID()+1).arg(captureProcess->getJobCount()).arg(job->getPrefix()).arg(completed).arg(job->getCount()));
+        sequenceLabel->setText(QString("Job # %1/%2 %3 (%4/%5)").arg(captureProcess->getActiveJobID()+1).arg(captureProcess->getJobCount()).arg(job->getFullPrefix()).arg(completed).arg(job->getCount()));
         sequenceProgress->setRange(0, job->getCount());
         sequenceProgress->setValue(completed);
     }
 }
 
-void EkosManager::updateCaptureCountDown()
+void EkosManager::updateExposureProgress(Ekos::SequenceJob *job)
 {
+    imageCountDown.setHMS(0,0,0);
+    imageCountDown = imageCountDown.addSecs(job->getExposeLeft());
+    if (imageCountDown.hour() == 23)
+        imageCountDown.setHMS(0,0,0);
+
+    imageProgress->setRange(0, job->getExposure());
+    imageProgress->setValue(job->getExposeLeft());
+
+    imageRemainingTime->setText(imageCountDown.toString("hh:mm:ss"));
+}
+
+void EkosManager::updateCaptureCountDown()
+{        
     overallCountDown  = overallCountDown.addSecs(-1);
     if (overallCountDown.hour() == 23)
         overallCountDown.setHMS(0,0,0);
@@ -1940,7 +1957,7 @@ void EkosManager::updateCaptureCountDown()
         sequenceCountDown.setHMS(0,0,0);
 
     overallRemainingTime->setText(overallCountDown.toString("hh:mm:ss"));
-    sequenceRemainingTime->setText(sequenceCountDown.toString("hh:mm:ss"));
+    sequenceRemainingTime->setText(sequenceCountDown.toString("hh:mm:ss"));    
 }
 
 void EkosManager::updateFocusStarPixmap(QPixmap &starPixmap)
@@ -1984,7 +2001,6 @@ void EkosManager::updateGuideStatus(Ekos::GuideState status)
     case Ekos::GUIDE_SUSPENDED:
     case Ekos::GUIDE_DITHERING_ERROR:
     case Ekos::GUIDE_CALIBRATION_SUCESS:
-    case Ekos::GUIDE_DITHERING_SUCCESS:
         if (guidePI->isAnimated())
             guidePI->stopAnimation();
         break;
@@ -1992,6 +2008,7 @@ void EkosManager::updateGuideStatus(Ekos::GuideState status)
     case Ekos::GUIDE_CALIBRATING:
     case Ekos::GUIDE_GUIDING:
     case Ekos::GUIDE_DITHERING:
+    case Ekos::GUIDE_DITHERING_SUCCESS:
         if (guidePI->isAnimated() == false)
             guidePI->startAnimation();
         break;

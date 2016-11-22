@@ -279,6 +279,9 @@ public slots:
     // Capture
     void setCaptureComplete();
 
+    // Update Capture Module status
+    void setCaptureStatus(Ekos::CaptureState newState);
+
 private slots:
     /* Solver Options */
     void checkLineEdits();
@@ -327,6 +330,11 @@ private:
      * @brief Sync the telescope to the solved alignment coordinate.
      */
     void Sync();
+
+    /**
+     * @brief Slew the telescope to the solved alignment coordinate.
+     */
+    void Slew();
 
     /**
      * @brief Sync the telescope to the solved alignment coordinate, and then slew to the target coordinate.

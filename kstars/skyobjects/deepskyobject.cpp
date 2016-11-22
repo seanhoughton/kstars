@@ -71,7 +71,9 @@ DeepSkyObject::DeepSkyObject( int t, dms r, dms d, float m,
     updateID = updateNumID = 0;
     customCat = NULL;
     Flux = 0;
-    loadImage();
+
+    // Disable image loading on init
+    //loadImage();
 }
 
 DeepSkyObject::DeepSkyObject( const CatalogEntryData &data, CatalogComponent *cat )
@@ -99,7 +101,9 @@ DeepSkyObject::DeepSkyObject( const CatalogEntryData &data, CatalogComponent *ca
     updateID = updateNumID = 0;
     customCat = cat;
     Flux = data.flux;
-    loadImage();
+
+    // Disable image loading on init
+    //loadImage();
 }
 
 DeepSkyObject* DeepSkyObject::clone() const
@@ -138,6 +142,7 @@ void DeepSkyObject::loadImage()
 {
     QString tname = name().toLower().remove(' ');
     m_image = TextureManager::getImage( tname );
+    imageLoaded=true;
 }
 
 double DeepSkyObject::labelOffset() const {
@@ -152,19 +157,22 @@ double DeepSkyObject::labelOffset() const {
     return 0.5*size + 4.;
 }
 
-QString DeepSkyObject::labelString() const {
+QString DeepSkyObject::labelString() const
+{
     QString oName;
-    if( Options::showDeepSkyNames() ) {
+    if( Options::showDeepSkyNames() )
+    {
         if( Options::deepSkyLongLabels() && translatedLongName() != translatedName() )
             oName = translatedLongName() + " (" + translatedName() + ')';
         else
             oName = translatedName();
     }
 
-    if( Options::showDeepSkyMagnitudes() ) {
+    if( Options::showDeepSkyMagnitudes() )
+    {
         if( Options::showDeepSkyNames() )
-            oName += "; ";
-        oName += QLocale().toString( mag(), 1 );
+            oName += " ";
+        oName += "[" + QLocale().toString( mag(), 'f', 1 ) + "m]";
     }
 
     return oName;

@@ -164,41 +164,88 @@ bool DarkLibrary::subtract(FITSData *darkData, FITSView *lightImage, FITSScale f
    Q_ASSERT(darkData);
    Q_ASSERT(lightImage);
 
-   FITSData *lightData = lightImage->getImageData();
+    switch (darkData->getDataType())
+    {
+        case TBYTE:
+            return subtract<uint8_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   float *darkBuffer     = darkData->getImageBuffer();
-   float *lightBuffer    = lightData->getImageBuffer();
+        case TSHORT:
+            return subtract<int16_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   int darkoffset   = offsetX + offsetY * darkData->getWidth();
-   int darkW        = darkData->getWidth();
+        case TUSHORT:
+            return subtract<uint16_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   int lightOffset  = 0;
-   int lightW       = lightData->getWidth();
-   int lightH       = lightData->getHeight();
+        case TLONG:
+            return subtract<int32_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   for (int i=0; i < lightH; i++)
-   {
-       for (int j=0; j < lightW; j++)
-       {
-           lightBuffer[j+lightOffset] -= darkBuffer[j+darkoffset];
-           if (lightBuffer[j+lightOffset] < 0)
-               lightBuffer[j+lightOffset] = 0;
-       }
+        case TULONG:
+            return subtract<uint32_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-       lightOffset += lightW;
-       darkoffset  += darkW;
-   }
+        case TFLOAT:
+            return subtract<float>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   lightData->applyFilter(filter);
-   lightImage->rescale(ZOOM_KEEP_LEVEL);
-   lightImage->updateFrame();
+        case TLONGLONG:
+            return subtract<int64_t>(darkData, lightImage, filter, offsetX, offsetY);
+            break;
 
-   emit darkFrameCompleted(true);
+        case TDOUBLE:
+            return subtract<double>(darkData, lightImage, filter, offsetX, offsetY);
+        break;
 
-   return true;
+        default:
+        break;
+    }
+
+    return false;
 }
 
-void DarkLibrary::captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetImage, double duration, uint16_t offsetX, uint16_t offsetY)
+template<typename T> bool DarkLibrary::subtract(FITSData *darkData, FITSView *lightImage, FITSScale filter, uint16_t offsetX, uint16_t offsetY)
+{
+    FITSData *lightData = lightImage->getImageData();
+
+    T *darkBuffer     = reinterpret_cast<T*>(darkData->getImageBuffer());
+    T *lightBuffer    = reinterpret_cast<T*>(lightData->getImageBuffer());
+
+    int darkoffset   = offsetX + offsetY * darkData->getWidth();
+    int darkW        = darkData->getWidth();
+
+    int lightOffset  = 0;
+    int lightW       = lightData->getWidth();
+    int lightH       = lightData->getHeight();
+
+    for (int i=0; i < lightH; i++)
+    {
+        for (int j=0; j < lightW; j++)
+        {
+            if (lightBuffer[j+lightOffset] > darkBuffer[j+darkoffset])
+                lightBuffer[j+lightOffset] -= darkBuffer[j+darkoffset];
+            else
+                lightBuffer[j+lightOffset] = 0;
+        }
+
+        lightOffset += lightW;
+        darkoffset  += darkW;
+    }
+
+    lightData->applyFilter(filter);
+    if (filter == FITS_NONE)
+        lightData->calculateStats(true);
+    lightImage->rescale(ZOOM_KEEP_LEVEL);
+    lightImage->updateFrame();
+
+    emit darkFrameCompleted(true);
+
+    return true;
+
+}
+
+bool DarkLibrary::captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetImage, double duration, uint16_t offsetX, uint16_t offsetY)
 {
     QStringList shutterfulCCDs  = Options::shutterfulCCDs();
     QStringList shutterlessCCDs = Options::shutterlessCCDs();
@@ -228,12 +275,13 @@ void DarkLibrary::captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetIm
 
     if (hasNoShutter)
     {
-        if ( (KMessageBox::warningContinueCancel(NULL, i18n("Cover the telescope or camera in order to take a dark exposure."), i18n("Dark Exposure"),
-                                                 KStandardGuiItem::cont(), KStandardGuiItem::cancel(), "dark_exposure_dialog_notification"))
-                == KMessageBox::Cancel)
+        if ( KMessageBox::warningContinueCancel(NULL, i18n("Cover the telescope or camera in order to take a dark exposure."), i18n("Dark Exposure"),
+                                                 KStandardGuiItem::cont(), KStandardGuiItem::cancel(), "dark_exposure_dialog_notification") == KMessageBox::Cancel)
         {
             emit newLog(i18n("Dark frame capture cancelled."));
+            disconnect(targetChip->getCCD(), SIGNAL(BLOBUpdated(IBLOB*)), this, SLOT(newFITS(IBLOB*)));
             emit darkFrameCompleted(false);
+            return false;
         }
     }
 
@@ -252,6 +300,8 @@ void DarkLibrary::captureAndSubtract(ISD::CCDChip *targetChip, FITSView*targetIm
     emit newLog(i18n("Capturing dark frame..."));
 
     targetChip->capture(duration);
+
+    return true;
 }
 
 void DarkLibrary::newFITS(IBLOB *bp)

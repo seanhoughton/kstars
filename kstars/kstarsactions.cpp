@@ -529,10 +529,25 @@ void KStars::slotTelescopeWizard()
 {
 #ifdef HAVE_INDI
     #ifndef Q_OS_WIN
+
+    QString indiServerDir=Options::indiServer();
+
+     #ifdef Q_OS_OSX
+    if(Options::indiServerIsInternal())
+        indiServerDir=QCoreApplication::applicationDirPath()+"/indi";
+    else if(indiServerDir.length()>10)
+        indiServerDir=Options::indiServer().mid(0,Options::indiServer().length()-10);
+    #endif
+
+    QStringList paths;
+    paths << "/usr/bin" << "/usr/local/bin" << indiServerDir;
+
     if (QStandardPaths::findExecutable("indiserver").isEmpty())
     {
-        KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
-        return;
+        if(QStandardPaths::findExecutable("indiserver",paths).isEmpty()){
+            KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
+            return;
+        }
     }
     #endif
 
@@ -546,10 +561,25 @@ void KStars::slotINDIPanel()
 {
 #ifdef HAVE_INDI
     #ifndef Q_OS_WIN
+
+    QString indiServerDir=Options::indiServer();
+
+     #ifdef Q_OS_OSX
+    if(Options::indiServerIsInternal())
+        indiServerDir=QCoreApplication::applicationDirPath()+"/indi";
+    else if(indiServerDir.length()>10)
+        indiServerDir=Options::indiServer().mid(0,Options::indiServer().length()-10);
+    #endif
+
+    QStringList paths;
+    paths << "/usr/bin" << "/usr/local/bin" << indiServerDir;
+
     if (QStandardPaths::findExecutable("indiserver").isEmpty())
     {
-        KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
-        return;
+        if(QStandardPaths::findExecutable("indiserver",paths).isEmpty()){
+            KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
+            return;
+        }
     }
     #endif
     GUIManager::Instance()->updateStatus();
@@ -560,10 +590,25 @@ void KStars::slotINDIDriver()
 {
 #ifdef HAVE_INDI
     #ifndef Q_OS_WIN
+
+    QString indiServerDir=Options::indiServer();
+
+     #ifdef Q_OS_OSX
+    if(Options::indiServerIsInternal())
+        indiServerDir=QCoreApplication::applicationDirPath()+"/indi";
+    else if(indiServerDir.length()>10)
+        indiServerDir=Options::indiServer().mid(0,Options::indiServer().length()-10);
+    #endif
+
+    QStringList paths;
+    paths << "/usr/bin" << "/usr/local/bin" << indiServerDir;
+
     if (QStandardPaths::findExecutable("indiserver").isEmpty())
     {
-        KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
-        return;
+        if(QStandardPaths::findExecutable("indiserver",paths).isEmpty()){
+            KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
+            return;
+        }
     }
     #endif
 
@@ -580,10 +625,25 @@ void KStars::slotEkos()
 #ifdef HAVE_INDI
 
     #ifndef Q_OS_WIN
+
+    QString indiServerDir=Options::indiServer();
+
+     #ifdef Q_OS_OSX
+    if(Options::indiServerIsInternal())
+        indiServerDir=QCoreApplication::applicationDirPath()+"/indi";
+    else if(indiServerDir.length()>10)
+        indiServerDir=Options::indiServer().mid(0,Options::indiServer().length()-10);
+    #endif
+
+    QStringList paths;
+    paths << "/usr/bin" << "/usr/local/bin" << indiServerDir;
+
     if (QStandardPaths::findExecutable("indiserver").isEmpty())
     {
-        KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
-        return;
+        if(QStandardPaths::findExecutable("indiserver",paths).isEmpty()){
+            KMessageBox::error(NULL, i18n("Unable to find INDI server. Please make sure the package that provides the 'indiserver' binary is installed."));
+            return;
+        }
     }
     #endif
 
@@ -1123,29 +1183,31 @@ void KStars::slotTrack() {
 }
 
 void KStars::slotManualFocus() {
-    QPointer<FocusDialog> focusDialog = new FocusDialog( this ); // = new FocusDialog( this );
+    QPointer<FocusDialog> focusDialog = new FocusDialog();
     if ( Options::useAltAz() ) focusDialog->activateAzAltPage();
 
-    if ( focusDialog->exec() == QDialog::Accepted ) {
-        //DEBUG
-        qDebug() << "focusDialog point: " << &focusDialog;
-
+    if ( focusDialog->exec() == QDialog::Accepted )
+    {
         //If the requested position is very near the pole, we need to point first
         //to an intermediate location just below the pole in order to get the longitudinal
         //position (RA/Az) right.
-        double realAlt( focusDialog->point().alt().Degrees() );
-        double realDec( focusDialog->point().dec().Degrees() );
-        if ( Options::useAltAz() && realAlt > 89.0 ) {
-            focusDialog->point().setAlt( 89.0 );
-            focusDialog->point().HorizontalToEquatorial( data()->lst(), data()->geo()->lat() );
+        double realAlt( focusDialog->point()->alt().Degrees() );
+        double realDec( focusDialog->point()->dec().Degrees() );
+        if ( Options::useAltAz() && realAlt > 89.0 )
+        {
+            focusDialog->point()->setAlt( 89.0 );
+            focusDialog->point()->HorizontalToEquatorial( data()->lst(), data()->geo()->lat() );
         }
-        if ( ! Options::useAltAz() && realDec > 89.0 ) {
-            focusDialog->point().setDec( 89.0 );
-            focusDialog->point().EquatorialToHorizontal( data()->lst(), data()->geo()->lat() );
+        if ( ! Options::useAltAz() && realDec > 89.0 )
+        {
+            focusDialog->point()->setDec( 89.0 );
+            focusDialog->point()->EquatorialToHorizontal( data()->lst(), data()->geo()->lat() );
         }
 
-        map()->setClickedPoint( & focusDialog->point() );
-        if ( Options::isTracking() ) slotTrack();
+        map()->setClickedPoint( focusDialog->point() );
+
+        if ( Options::isTracking() )
+            slotTrack();
 
         map()->slotCenter();
 
@@ -1157,15 +1219,20 @@ void KStars::slotManualFocus() {
         //Also, if the requested position was within 1 degree of the coordinate pole, this will
         //automatically correct the final pointing from the intermediate offset position to the final position
         data()->setSnapNextFocus();
-        if ( Options::useAltAz() ) {
-            map()->setDestinationAltAz( focusDialog->point().alt(), focusDialog->point().az() );
-        } else {
-            map()->setDestination( focusDialog->point().ra(), focusDialog->point().dec() );
+        if ( Options::useAltAz() )
+        {
+            map()->setDestinationAltAz( focusDialog->point()->alt(), focusDialog->point()->az() );
+        }
+        else
+        {
+            map()->setDestination( focusDialog->point()->ra(), focusDialog->point()->dec() );
         }
 
         //Now, if the requested point was near a pole, we need to reset the Alt/Dec of the focus.
-        if ( Options::useAltAz() && realAlt > 89.0 ) map()->focus()->setAlt( realAlt );
-        if ( ! Options::useAltAz() && realDec > 89.0 ) map()->focus()->setDec( realAlt );
+        if ( Options::useAltAz() && realAlt > 89.0 )
+            map()->focus()->setAlt( realAlt );
+        if ( ! Options::useAltAz() && realDec > 89.0 )
+            map()->focus()->setDec( realAlt );
 
         //Don't track if we set Alt/Az coordinates.  This way, Alt/Az remain constant.
         if ( focusDialog->usedAltAz() )

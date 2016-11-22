@@ -36,9 +36,7 @@ class FindDialogLite;
 class DetailDialogLite;
 class LocationDialogLite;
 
-#ifdef HAVE_INDI
 class ClientManagerLite;
-#endif
 
 class QQuickItem;
 
@@ -102,7 +100,7 @@ public:
     Q_INVOKABLE void fullUpdate();
 
     /** @short currently sets color scheme from config **/
-    void applyConfig( bool doApplyFocus = true );
+    Q_INVOKABLE void applyConfig( bool doApplyFocus = true );
 
     /** @short set whether tutorial should be shown on next startup **/
     void setRunTutorial(bool runTutorial);
@@ -110,10 +108,8 @@ public:
     /** @return true if tutorial should be shown **/
     bool getRunTutorial();
     
-#ifdef HAVE_INDI
     /** @return pointer to KStarsData object which handles connection to INDI server. */
     inline ClientManagerLite *clientManagerLite() const { return m_clientManager; }
-#endif
 
     /** @defgroup kconfigwrappers QML wrappers around KConfig
      *  @{
@@ -192,7 +188,7 @@ public Q_SLOTS:
     
     /** Write current settings to config file. Used to save config file upon exit
      */
-    void writeConfig();
+    bool writeConfig();
     
     /** Load a color scheme.
      * @param name the name of the color scheme to load (e.g., "Moonless Night")
@@ -220,7 +216,7 @@ private slots:
     void datainitFinished();
     
     /** Save data to config file before exiting.*/
-    void slotAboutToQuit();
+    void handleStateChange(Qt::ApplicationState state);
     
 private:
     /** Initialize focus position */
@@ -241,9 +237,7 @@ private:
     DetailDialogLite *m_detailDialogLite;
     LocationDialogLite *m_locationDialogLite;
 
-#ifdef HAVE_INDI
     ClientManagerLite *m_clientManager;
-#endif
 };
 
 #endif

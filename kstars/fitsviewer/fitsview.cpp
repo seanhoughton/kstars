@@ -107,7 +107,7 @@ void FITSView::updateMouseCursor(){
     }
     if(mouseMode==scopeMouse){
         QPixmap scope_pix=QPixmap(":/icons/center_telescope.svg").scaled(32,32,Qt::KeepAspectRatio,Qt::FastTransformation);
-        viewport()->setCursor(QCursor(scope_pix,0,0));
+        viewport()->setCursor(QCursor(scope_pix,10,10));
     }
 }
 
@@ -138,7 +138,9 @@ int FITSView::getMouseMode(){
 This method was added to make the panning function work.
 If the mouse button is released, it resets mouseButtonDown variable and the mouse cursor.
  */
-void FITSLabel::mouseReleaseEvent(QMouseEvent *e){
+void FITSLabel::mouseReleaseEvent(QMouseEvent *e)
+{
+    Q_UNUSED(e);
     if(image->getMouseMode()==FITSView::dragMouse){
         mouseButtonDown=false;
         image->updateMouseCursor();
@@ -168,7 +170,7 @@ void FITSLabel::mouseMoveEvent(QMouseEvent *e)
     double x,y;
     FITSData *image_data = image->getImageData();
 
-    float *buffer = image_data->getImageBuffer();
+    uint8_t *buffer = image_data->getImageBuffer();
 
     if (buffer == NULL)
         return;
@@ -185,11 +187,48 @@ void FITSLabel::mouseMoveEvent(QMouseEvent *e)
     x -= 1;
     y -= 1;
 
-    if (image_data->getBPP() == -32 || image_data->getBPP() == 32)
-        emit newStatus(QLocale().toString(buffer[(int) (y * width + x)], 'f', 4), FITS_VALUE);
-    else
-        emit newStatus(QLocale().toString(buffer[(int) (y * width + x)], 'f', 2), FITS_VALUE);
+    QString stringValue;
 
+    switch (image_data->getDataType())
+    {
+        case TBYTE:
+            stringValue = QLocale().toString(buffer[(int) (y * width + x)]);
+            break;
+
+        case TSHORT:
+            stringValue = QLocale().toString( (reinterpret_cast<int16_t*>(buffer)) [(int) (y * width + x)]);
+            break;
+
+        case TUSHORT:
+            stringValue = QLocale().toString( (reinterpret_cast<uint16_t*>(buffer)) [(int) (y * width + x)]);
+            break;
+
+        case TLONG:
+            stringValue = QLocale().toString( (reinterpret_cast<int32_t*>(buffer)) [(int) (y * width + x)]);
+            break;
+
+        case TULONG:
+            stringValue = QLocale().toString( (reinterpret_cast<uint32_t*>(buffer)) [(int) (y * width + x)]);
+            break;
+
+        case TFLOAT:
+            stringValue = QLocale().toString( (reinterpret_cast<float*>(buffer)) [(int) (y * width + x)], 'f', 5);
+            break;
+
+        case TLONGLONG:
+            stringValue = QLocale().toString(static_cast<int>((reinterpret_cast<int64_t*>(buffer)) [(int) (y * width + x)]));
+            break;
+
+        case TDOUBLE:
+            stringValue = QLocale().toString( (reinterpret_cast<float*>(buffer)) [(int) (y * width + x)], 'f', 5);
+
+        break;
+
+        default:
+        break;
+    }
+
+    emit newStatus(stringValue, FITS_VALUE);
 
     if (image_data->hasWCS()&&image->getMouseMode()!=FITSView::selectMouse)
     {
@@ -477,6 +516,11 @@ bool FITSView::loadFITS (const QString &inFilename , bool silent)
     delete (image_data);
     image_data = NULL;
 
+    filterStack.clear();
+    filterStack.push(FITS_NONE);
+    if (filter != FITS_NONE)
+        filterStack.push(filter);
+
     image_data = new FITSData(mode);
 
     if (setBayerParams)
@@ -580,42 +624,80 @@ int FITSView::saveFITS( const QString &newFilename )
 
 int FITSView::rescale(FITSZoom type)
 {
+    switch (image_data->getDataType())
+    {
+        case TBYTE:
+            return rescale<uint8_t>(type);
+            break;
+
+        case TSHORT:
+            return rescale<int16_t>(type);
+            break;
+
+        case TUSHORT:
+            return rescale<uint16_t>(type);
+            break;
+
+        case TLONG:
+            return rescale<int32_t>(type);
+            break;
+
+        case TULONG:
+            return rescale<uint32_t>(type);
+            break;
+
+        case TFLOAT:
+            return rescale<float>(type);
+            break;
+
+        case TLONGLONG:
+            return rescale<int64_t>(type);
+            break;
+
+        case TDOUBLE:
+            return rescale<double>(type);
+        break;
+
+        default:
+        break;
+    }
+
+    return 0;
+}
+
+template<typename T>  int FITSView::rescale(FITSZoom type)
+{
     double val=0;
     double bscale, bzero;
     double min, max;
-    float *image_buffer = image_data->getImageBuffer();
-    float *display_buffer = image_buffer;
+    bool displayBuffer = false;
+
+    uint8_t *image_buffer = image_data->getImageBuffer();
+
     uint32_t size = image_data->getSize();
+    int BBP = image_data->getBytesPerPixel();
 
-    if (Options::autoStretch() && filter == FITS_NONE)
+    filter = filterStack.last();
+
+    if (Options::autoStretch() && (filter == FITS_NONE || (filter >= FITS_ROTATE_CW && filter <= FITS_FLIP_V )))
     {
-        display_buffer = new float[image_data->getSize() * image_data->getNumOfChannels()];
-        memset(display_buffer, 0, image_data->getSize() * image_data->getNumOfChannels() * sizeof(float));
+        image_buffer = new uint8_t[image_data->getSize() * image_data->getNumOfChannels() * BBP];
+        memcpy(image_buffer, image_data->getImageBuffer(), image_data->getSize() * image_data->getNumOfChannels() * BBP);
 
-        float data_min   = image_data->getMean(0) - image_data->getStdDev(0);
-        float data_max   = image_data->getMean(0) + image_data->getStdDev(0) * 3;
-        uint16_t   data_w     = image_data->getWidth();
-        uint16_t   data_h     = image_data->getHeight();
+        displayBuffer = true;
 
-        for (int i=0; i < image_data->getNumOfChannels(); i++)
-        {
-            int offset = i*size;
-            for (int j=0; j < data_h; j++)
-            {
-                int row = offset + j * data_w;
-                for (int k=0; k < data_w; k++)
-                {
-                    int index=k + row;
-                    display_buffer[index] = qBound(data_min, image_buffer[index], data_max);
-                }
-            }
-        }
+        float data_min   = -1;
+        float data_max   = -1;
+
+        image_data->applyFilter(FITS_AUTO_STRETCH, image_buffer, &data_min, &data_max);
 
         min = data_min;
         max = data_max;
     }
     else
         image_data->getMinMax(&min, &max);
+
+    T *buffer = reinterpret_cast<T*>(image_buffer);
 
     if (min == max)
     {
@@ -651,8 +733,8 @@ int FITSView::rescale(FITSZoom type)
 
                 for (int i = 0; i < image_width; i++)
                 {
-                    val = display_buffer[j * image_width + i];
-                    scanLine[i]= (val * bscale + bzero);
+                    val = buffer[j * image_width + i] * bscale + bzero;
+                    scanLine[i]= qBound(0.0, val, 255.0);
                 }
             }
         }
@@ -667,24 +749,20 @@ int FITSView::rescale(FITSZoom type)
 
                 for (int i = 0; i < image_width; i++)
                 {
-                    rval = display_buffer[j * image_width + i];
-                    gval = display_buffer[j * image_width + i + size];
-                    bval = display_buffer[j * image_width + i + size * 2];
+                    rval = buffer[j * image_width + i];
+                    gval = buffer[j * image_width + i + size];
+                    bval = buffer[j * image_width + i + size * 2];
 
                     value = qRgb(rval* bscale + bzero, gval* bscale + bzero, bval* bscale + bzero);
 
-                    //display_image->setPixel(i, j, value);
                     scanLine[i] = value;
-
                 }
             }
-
         }
-
     }
 
-    if (display_buffer != image_buffer)
-        delete [] display_buffer;
+    if (displayBuffer)
+        delete [] image_buffer;
 
     switch (type)
     {
@@ -1469,5 +1547,7 @@ void FITSView::pinchTriggered(QPinchGesture *gesture)
 void FITSView::handleWCSCompletion()
 {
     hasWCS = wcsWatcher.result();
+    if(hasWCS)
+          this->updateFrame();
     emit wcsToggled(hasWCS);
 }

@@ -223,6 +223,13 @@ namespace KSUtils {
           static void Write(QTextStream &stream, QtMsgType type, const QString &msg);
 
       };
+
+    #ifdef Q_OS_OSX
+    bool copyDataFolderFromAppBundleIfNeeded();//The boolean returns true if the data folders are good to go.
+    void configureDefaultAstrometry();
+    bool copyRecursively(QString sourceFolder, QString destFolder);
+    #endif
+
 }
 
 #endif

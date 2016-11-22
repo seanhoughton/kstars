@@ -75,7 +75,7 @@ Guide::Guide() : QWidget()
     // To do calibrate + guide in one command
     autoCalibrateGuide = false;
 
-    guideView = new FITSView(guideWidget);
+    guideView = new FITSView(guideWidget, FITS_GUIDE);
     guideView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     guideView->setBaseSize(guideWidget->size());
     QVBoxLayout *vlayout = new QVBoxLayout();
@@ -99,6 +99,9 @@ Guide::Guide() : QWidget()
     // Progress Indicator
     pi = new QProgressIndicator(this);
     controlLayout->addWidget(pi, 0, 1, 1, 1);
+
+    showFITSViewerB->setIcon(QIcon::fromTheme("kstars_fitsviewer", QIcon(":/icons/breeze/default/kstars_fitsviewer.svg")));
+    connect(showFITSViewerB, SIGNAL(clicked()), this, SLOT(showFITSViewer()));
 
     // Exposure
     connect(exposureIN, SIGNAL(editingFinished()), this, SLOT(saveDefaultGuideExposure()));
@@ -248,10 +251,10 @@ Guide::Guide() : QWidget()
 
     internalGuider->setGuideView(guideView);
 
+    state = GUIDE_IDLE;
+
     // Set current guide type
     setGuiderType(-1);
-
-    state = GUIDE_IDLE;
 }
 
 Guide::~Guide()
@@ -269,7 +272,6 @@ void Guide::addCCD(ISD::GDInterface *newCCD)
     CCDs.append(ccd);
 
     guiderCombo->addItem(ccd->getDeviceName());
-
 
     /*
      *
@@ -342,12 +344,6 @@ void Guide::checkCCD(int ccdNum)
             return;
     }
 
-    // Reset BLOB mode
-    if (currentCCD != NULL)
-    {
-        currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName());
-    }
-
     if (ccdNum <= CCDs.count())
     {
         currentCCD = CCDs.at(ccdNum);
@@ -356,6 +352,29 @@ void Guide::checkCCD(int ccdNum)
         connect(currentCCD, SIGNAL(numberUpdated(INumberVectorProperty*)), this, SLOT(processCCDNumber(INumberVectorProperty*)), Qt::UniqueConnection);
         connect(currentCCD, SIGNAL(newExposureValue(ISD::CCDChip*,double,IPState)), this, SLOT(checkExposureValue(ISD::CCDChip*,double,IPState)), Qt::UniqueConnection);
 
+        // If guider is external and already connected and remote images option was disabled AND it was already
+        // disabled, then let's go ahead and disable it.
+        if (guiderType != GUIDE_INTERNAL && Options::guideRemoteImagesEnabled() == false && guider->isConnected())
+        {
+            for (int i=0; i < CCDs.count(); i++)
+            {
+               ISD::CCD *oneCCD = CCDs[i];
+               if (i == ccdNum && oneCCD->getDriverInfo()->getClientManager()->getBLOBMode(oneCCD->getDeviceName(), "CCD1") != B_NEVER)
+               {
+                   appendLogText(i18n("Disabling remote image reception from %1", oneCCD->getDeviceName()));
+                   oneCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, oneCCD->getDeviceName(), "CCD1");
+                   oneCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, oneCCD->getDeviceName(), "CCD2");
+               }
+               // If it was already disabled, enable it back
+               else if (i != ccdNum && oneCCD->getDriverInfo()->getClientManager()->getBLOBMode(oneCCD->getDeviceName(), "CCD1") == B_NEVER)
+               {
+                   appendLogText(i18n("Enabling remote image reception from %1", oneCCD->getDeviceName()));
+                   oneCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, oneCCD->getDeviceName(), "CCD1");
+                   oneCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, oneCCD->getDeviceName(), "CCD2");
+               }
+            }
+        }
+
         if (currentCCD->hasGuideHead() && guiderCombo->currentText().contains("Guider"))
             useGuideHead=true;
         else
@@ -363,14 +382,6 @@ void Guide::checkCCD(int ccdNum)
 
         ISD::CCDChip *targetChip = currentCCD->getChip(useGuideHead ? ISD::CCDChip::GUIDE_CCD : ISD::CCDChip::PRIMARY_CCD);
         targetChip->setImageView(guideView, FITS_GUIDE);
-
-        if (guiderType != GUIDE_INTERNAL)
-        {
-            if (Options::guideRemoteImagesEnabled())
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-            else
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-        }
 
         syncCCDInfo();
     }
@@ -631,6 +642,9 @@ bool Guide::captureOneFrame()
 #endif
 
     connect(currentCCD, SIGNAL(BLOBUpdated(IBLOB*)), this, SLOT(newFITS(IBLOB*)), Qt::UniqueConnection);
+    if (Options::guideLogging())
+        qDebug() << "Guide: Capturing frame...";
+
     targetChip->capture(seqExpose);
 
     return true;
@@ -652,7 +666,13 @@ bool Guide::abort()
     {
     case GUIDE_IDLE:
     case GUIDE_CONNECTED:
+        break;
     case GUIDE_DISCONNECTED:
+        if (currentCCD && guiderType != GUIDE_INTERNAL && Options::guideRemoteImagesEnabled() == false)
+        {
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD1");
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD2");
+        }
         break;
 
     case GUIDE_CALIBRATING:
@@ -989,18 +1009,28 @@ bool Guide::guide()
 
 bool Guide::dither()
 {
-    //return guider->dither(Options::ditherPixels());
-    state = GUIDE_DITHERING;
-    return true;
+    if (state == GUIDE_DITHERING)
+        return true;
+
+    if (guiderType == GUIDE_INTERNAL)
+    {
+        if (state != GUIDE_GUIDING)
+            capture();
+
+        setStatus(GUIDE_DITHERING);
+
+        return true;
+    }
+    else
+        return guider->dither(Options::ditherPixels());
 }
 
 bool Guide::suspend()
 {
     if (state == GUIDE_SUSPENDED)
         return true;
-
-    if (state == GUIDE_GUIDING)
-        return guider->suspend();
+    else if (state >= GUIDE_CAPTURE)
+       return guider->suspend();
     else
         return false;
 }
@@ -1009,11 +1039,36 @@ bool Guide::resume()
 {
     if (state == GUIDE_GUIDING)
         return true;
-
-    if (state == GUIDE_SUSPENDED)
+    else if (state == GUIDE_SUSPENDED)
         return guider->resume();
     else
         return false;
+}
+
+void Guide::setCaptureStatus(CaptureState newState)
+{
+    switch (newState)
+    {
+    case CAPTURE_DITHERING:
+        dither();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void Guide::setMountStatus(ISD::Telescope::TelescopeStatus newState)
+{
+    switch (newState)
+    {
+        case ISD::Telescope::MOUNT_PARKING:
+            abort();
+        break;
+
+        default:
+        break;
+    }
 }
 
 void Guide::setExposure(double value)
@@ -1056,10 +1111,9 @@ void Guide::setGuideBoxSizeIndex(int index)
     Options::setGuideSquareSizeIndex(index);
 }
 
-void Guide::setGuideAlgorithm(const QString & algorithm)
+void Guide::setGuideAlgorithmIndex(int index)
 {
-    //TODO
-    //guider->setGuideOptions(algorithm, guider->useSubFrame(), guider->useRapidGuide());
+    Options::setGuideAlgorithm(index);
 }
 
 void Guide::setSubFrameEnabled(bool enable)
@@ -1121,6 +1175,12 @@ void Guide::setStatus(Ekos::GuideState newState)
         if (guiderType == GUIDE_LINGUIDER)
             calibrateB->setEnabled(true);
         guideB->setEnabled(true);
+        if (currentCCD && guiderType != GUIDE_INTERNAL && Options::guideRemoteImagesEnabled() == false)
+        {
+            appendLogText(i18n("Disabling remote image reception from %1", currentCCD->getDeviceName()));
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, currentCCD->getDeviceName(), "CCD1");
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, currentCCD->getDeviceName(), "CCD2");
+        }
         break;
 
     case GUIDE_DISCONNECTED:
@@ -1129,6 +1189,12 @@ void Guide::setStatus(Ekos::GuideState newState)
         externalDisconnectB->setEnabled(false);
         calibrateB->setEnabled(false);
         guideB->setEnabled(false);
+        if (currentCCD && guiderType != GUIDE_INTERNAL && Options::guideRemoteImagesEnabled() == false)
+        {
+            appendLogText(i18n("Enabling remote image reception from %1", currentCCD->getDeviceName()));
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD1");
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD2");
+        }
         break;
 
     case GUIDE_CALIBRATION_SUCESS:
@@ -1153,7 +1219,7 @@ void Guide::setStatus(Ekos::GuideState newState)
         break;
 
     case GUIDE_GUIDING:
-        if (previousState == GUIDE_SUSPENDED)
+        if (previousState == GUIDE_SUSPENDED || previousState == GUIDE_DITHERING_SUCCESS)
             appendLogText(i18n("Guiding resumed."));
         else
         {
@@ -1194,7 +1260,8 @@ void Guide::setStatus(Ekos::GuideState newState)
 
     case GUIDE_DITHERING_SUCCESS:
         appendLogText(i18n("Dithering completed successfully."));
-        state = GUIDE_GUIDING;
+        // Go back to guiding state immediately
+        setStatus(GUIDE_GUIDING);
         capture();
         break;
     default:
@@ -1230,11 +1297,11 @@ void Guide::processCCDNumber(INumberVectorProperty *nvp)
     }
 }
 
-void Guide::checkExposureValue(ISD::CCDChip *targetChip, double exposure, IPState state)
+void Guide::checkExposureValue(ISD::CCDChip *targetChip, double exposure, IPState expState)
 {
     INDI_UNUSED(exposure);
 
-    if (state == IPS_ALERT && (state == GUIDE_GUIDING) || (state == GUIDE_DITHERING) || (state == GUIDE_CALIBRATING))
+    if (expState == IPS_ALERT && ( (state == GUIDE_GUIDING) || (state == GUIDE_DITHERING) || (state == GUIDE_CALIBRATING)) )
     {
         appendLogText(i18n("Exposure failed. Restarting exposure..."));
         targetChip->capture(exposureIN->value());
@@ -1281,7 +1348,9 @@ void Guide::syncTrackingBoxPosition()
         // If box size is larger than image size, set it to lower index
         if (boxSize/subBinX >= w || boxSize/subBinY >= h)
         {
-            boxSizeCombo->setCurrentIndex(boxSizeCombo->currentIndex()-1);
+            int newIndex = boxSizeCombo->currentIndex()-1;
+            if (newIndex >= 0)
+                boxSizeCombo->setCurrentIndex(newIndex);
             return;
         }
 
@@ -1330,12 +1399,6 @@ bool Guide::setGuiderType(int type)
 
         guider = internalGuider;
 
-        // Receive BLOBs from the driver
-        if (currentCCD)
-        {
-           currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-        }
-
         calibrateB->setEnabled(true);        
         guideB->setEnabled(false);
         captureB->setEnabled(true);
@@ -1357,15 +1420,6 @@ bool Guide::setGuiderType(int type)
 
         guider = phd2Guider;
 
-        // Do NOT receive BLOBs from the driver
-        if (currentCCD)
-        {
-            if (Options::guideRemoteImagesEnabled())
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-            else
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-        }
-
         calibrateB->setEnabled(false);
         captureB->setEnabled(false);
         darkFrameCheck->setEnabled(false);
@@ -1380,14 +1434,6 @@ bool Guide::setGuiderType(int type)
             linGuider = new LinGuider();
 
         guider = linGuider;
-
-        if (currentCCD)
-        {
-            if (Options::guideRemoteImagesEnabled())
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-            else
-                currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_NEVER, currentCCD->getDeviceName(), useGuideHead ? "CCD2" : "CCD1");
-        }
 
         calibrateB->setEnabled(true);
         captureB->setEnabled(false);
@@ -1418,9 +1464,11 @@ bool Guide::setGuiderType(int type)
 
 void Guide::updateTrackingBoxSize(int currentIndex)
 {
-    Options::setGuideSquareSizeIndex(currentIndex);
-
-    syncTrackingBoxPosition();
+    if (currentIndex >= 0)
+    {
+        Options::setGuideSquareSizeIndex(currentIndex);
+        syncTrackingBoxPosition();
+    }
 }
 
 bool Guide::selectAutoStar()
@@ -1764,7 +1812,7 @@ void Guide::setAxisDelta(double ra, double de)
 
     emit newAxisDelta(ra,de);
 
-    profilePixmap = driftGraph->grab(QRect(QPoint(0, 50), QSize(driftGraph->width(), 101)));
+    profilePixmap = driftGraph->grab(QRect(QPoint(0, 50), QSize(driftGraph->width(), 150)));
     emit newProfilePixmap(profilePixmap);
 
 }
@@ -1948,12 +1996,10 @@ bool Guide::executeOneOperation(GuideState operation)
         // Do not subframe if we are capturing calibration frame
         if (subFramed == false && Options::guideSubframeEnabled() == true && targetChip->canSubframe())
         {
-            int minX, maxX, minY, maxY, minW, maxW, minH, maxH;//, fx,fy,fw,fh;
+            int minX, maxX, minY, maxY, minW, maxW, minH, maxH;
             targetChip->getFrameMinMax(&minX, &maxX, &minY, &maxY, &minW, &maxW, &minH, &maxH);
 
-            int offset = boxSizeCombo->currentText().toInt()/subBinX;
-            //int x = guideView->getTrackingBox().x() + guideView->getTrackingBox().width()/2;
-            //int y = guideView->getTrackingBox().y() + guideView->getTrackingBox().height()/2;
+            int offset = boxSizeCombo->currentText().toInt()/subBinX;            
 
             int x = starCenter.x();
             int y = starCenter.y();
@@ -2032,10 +2078,15 @@ bool Guide::executeOneOperation(GuideState operation)
 
             actionRequired = true;
 
+            targetChip->setCaptureFilter((FITSScale) filterCombo->currentIndex());
+
             if (darkData)
                 DarkLibrary::Instance()->subtract(darkData, guideView, targetChip->getCaptureFilter(), offsetX, offsetY);
             else
-                DarkLibrary::Instance()->captureAndSubtract(targetChip, guideView, exposureIN->value(), offsetX, offsetY);
+            {
+                bool rc = DarkLibrary::Instance()->captureAndSubtract(targetChip, guideView, exposureIN->value(), offsetX, offsetY);
+                setDarkFrameEnabled(rc);
+            }
         }
     }
         break;
@@ -2081,6 +2132,29 @@ void Guide::processGuideOptions()
     {
         guiderType = static_cast<GuiderType>(Options::guiderType());
         setGuiderType(Options::guiderType());
+    }
+}
+
+void Guide::showFITSViewer()
+{
+    FITSData *data = guideView->getImageData();
+    if (data)
+    {
+        QUrl url = QUrl::fromLocalFile(data->getFilename());
+
+        if (fv.isNull())
+        {
+            if (Options::singleWindowCapturedFITS())
+                fv = KStars::Instance()->genericFITSViewer();
+            else
+                fv = new FITSViewer(Options::independentWindowFITS() ? NULL : KStars::Instance());
+
+            fv->addFITS(&url);
+        }
+        else
+            fv->updateFITS(&url, 0);
+
+        fv->show();
     }
 }
 }

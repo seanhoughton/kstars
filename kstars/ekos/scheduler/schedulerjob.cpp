@@ -350,7 +350,8 @@ void SchedulerJob::setEstimatedTime(const double &value)
 
     if (estimatedTimeCell)
     {
-        QTime estimatedTime = QTime::fromMSecsSinceStartOfDay(value*3600);
+        // Seconds to ms
+        QTime estimatedTime = QTime::fromMSecsSinceStartOfDay(value*1000);
         estimatedTimeCell->setText(estimatedTime.toString("HH:mm:ss"));
     }
 }
@@ -412,6 +413,16 @@ QTableWidgetItem *SchedulerJob::getEstimatedTimeCell() const
 void SchedulerJob::setEstimatedTimeCell(QTableWidgetItem *value)
 {
     estimatedTimeCell = value;
+}
+
+bool SchedulerJob::getLightFramesRequired() const
+{
+    return lightFramesRequired;
+}
+
+void SchedulerJob::setLightFramesRequired(bool value)
+{
+    lightFramesRequired = value;
 }
 
 

@@ -29,16 +29,16 @@ namespace Ekos
 
     // Focus States
     static const QStringList focusStates = { I18N_NOOP("Idle"), I18N_NOOP("Complete"), I18N_NOOP("Failed"), I18N_NOOP("Aborted"), I18N_NOOP("In Progress"),
-                                             I18N_NOOP("Capturing"), I18N_NOOP("Framing"), I18N_NOOP("User Input"), I18N_NOOP("Changing Filter")};
+                                             I18N_NOOP("User Input"), I18N_NOOP("Capturing"), I18N_NOOP("Framing"), I18N_NOOP("Changing Filter")};
 
-    typedef enum { FOCUS_IDLE, FOCUS_COMPLETE, FOCUS_FAILED, FOCUS_ABORTED, FOCUS_PROGRESS, FOCUS_FRAMING, FOCUS_WAITING, FOCUS_CHANGING_FILTER} FocusState;
+    typedef enum { FOCUS_IDLE, FOCUS_COMPLETE, FOCUS_FAILED, FOCUS_ABORTED, FOCUS_WAITING, FOCUS_PROGRESS, FOCUS_FRAMING, FOCUS_CHANGING_FILTER} FocusState;
 
     const QString &getFocusStatusString(FocusState state);
 
     // Align States
-    static const QStringList alignStates = { I18N_NOOP("Idle"), I18N_NOOP("Complete"), I18N_NOOP("Failed"), I18N_NOOP("Aborted"), I18N_NOOP("In Progress"), I18N_NOOP("Slewing")};
+    static const QStringList alignStates = { I18N_NOOP("Idle"), I18N_NOOP("Complete"), I18N_NOOP("Failed"), I18N_NOOP("Aborted"), I18N_NOOP("In Progress"), I18N_NOOP("Syncing"), I18N_NOOP("Slewing")};
 
-    typedef enum { ALIGN_IDLE, ALIGN_COMPLETE, ALIGN_FAILED, ALIGN_ABORTED, ALIGN_PROGRESS, ALIGN_SLEWING} AlignState;
+    typedef enum { ALIGN_IDLE, ALIGN_COMPLETE, ALIGN_FAILED, ALIGN_ABORTED, ALIGN_PROGRESS, ALIGN_SYNCING, ALIGN_SLEWING} AlignState;
 
     const QString &getAlignStatusString(AlignState state);
 }

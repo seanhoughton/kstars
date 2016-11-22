@@ -105,7 +105,7 @@ void LinGuider::readLinGuider()
             continue;
 
         if (Options::guideLogging())
-            emit newLog(rawString);
+            qDebug() << "Guide:" << rawString;
 
         qint16 magicNumber = *(reinterpret_cast<qint16*>(rawString.toLatin1().data()));
         if (magicNumber != 0x02)
@@ -272,8 +272,6 @@ void LinGuider::processResponse(LinGuiderCommand command, const QString &reply)
             emit newStatus(GUIDE_DITHERING_ERROR);
 
         state = GUIDING;
-        // Back to guiding
-        emit newStatus(GUIDE_GUIDING);
         deviationTimer.start();
         break;
 
@@ -284,6 +282,8 @@ void LinGuider::processResponse(LinGuiderCommand command, const QString &reply)
 
 void LinGuider::onConnected()
 {
+    connection = CONNECTED;
+
     emit newStatus(GUIDE_CONNECTED);
     // Get version
 

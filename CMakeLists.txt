@@ -1,7 +1,7 @@
 PROJECT(kstars CXX C)
 set (KStars_VERSION_MAJOR 2)
 set (KStars_VERSION_MINOR 7)
-set (KStars_VERSION_REVISION 0)
+set (KStars_VERSION_REVISION 2)
 set (CMAKE_CXX_STANDARD 11)
 #Build KStars Lite with -DKSTARS_LITE=ON
 option(BUILD_KSTARS_LITE "Build KStars Lite" OFF)
@@ -32,7 +32,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules" ${CMAKE_MODULE_PATH})
 
 if(BUILD_KSTARS_LITE)
-    find_package(Qt5 5.7 REQUIRED COMPONENTS Gui Qml Quick QuickControls2 Xml Svg Sql Network Positioning)
+    find_package(Qt5 5.7 REQUIRED COMPONENTS Gui Qml Quick QuickControls2 Xml Svg Sql Network Positioning Concurrent)
 else()
     find_package(Qt5 5.4 REQUIRED COMPONENTS Gui Qml Quick Xml Sql Svg Network PrintSupport Concurrent)
 endif()
@@ -83,7 +83,7 @@ add_definitions(${EIGEN_DEFINITIONS})
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 if(BUILD_KSTARS_LITE)
-    find_package(CFitsio) #REQUIRED)
+    find_package(CFitsio REQUIRED)
 else()
     find_package(CFitsio)
 endif()
@@ -94,7 +94,7 @@ set(HAVE_CFITSIO 0)
 endif(CFITSIO_FOUND)
 set_package_properties(CFitsio PROPERTIES DESCRIPTION "FITS IO Library" URL "http://heasarc.gsfc.nasa.gov/fitsio/fitsio.html" TYPE OPTIONAL PURPOSE "Support for the FITS (Flexible Image Transport System) data format in KStars.")
 
-find_package(INDI 1.2.0)
+find_package(INDI 1.3.1)
 #FIXME is there a better way to do this?
 if (INDI_FOUND)    
 SET(HAVE_INDI 1)
@@ -151,6 +151,9 @@ add_definitions(-DQT_NO_URL_CAST_FROM_STRING)
 
 if (UNIX)
 add_definitions(-Dfexceptions)
+
+# TEMPORARY: To disable QCustomPlot warning until 2.0.0 is released which fixes these warnings
+add_definitions(-Wno-non-virtual-dtor)
 endif(UNIX)
 
 configure_file(

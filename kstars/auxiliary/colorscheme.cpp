@@ -299,7 +299,7 @@ void ColorScheme::loadFromConfig() {
 
     setStarColorModeIntensity( cg.readEntry( "StarColorMode", 0 ), cg.readEntry( "StarColorIntensity", 5 ) );
 
-    FileName = cg.readEntry( "ColorSchemeFile", "classic.colors" );
+    FileName = cg.readEntry( "ColorSchemeFile", "moonless-night.colors" );
 }
 
 void ColorScheme::saveToConfig() {
@@ -311,6 +311,7 @@ void ColorScheme::saveToConfig() {
 
     cg.writeEntry( "StarColorMode", starColorMode() );
     cg.writeEntry( "StarColorIntensity", starColorIntensity() );
+    cg.writeEntry( "ColorSchemeFile", FileName);
 }
 
 void ColorScheme::setStarColorMode( int mode ) { 

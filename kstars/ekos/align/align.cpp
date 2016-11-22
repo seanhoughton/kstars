@@ -108,15 +108,15 @@ Align::Align()
     connect(correctAzB, SIGNAL(clicked()), this, SLOT(correctAzError()));
     connect(loadSlewB, SIGNAL(clicked()), this, SLOT(loadAndSlew()));
 
+    gotoModeButtonGroup->setId(syncR, GOTO_SYNC);
+    gotoModeButtonGroup->setId(slewR, GOTO_SLEW);
+    gotoModeButtonGroup->setId(nothingR, GOTO_NOTHING);
+
     connect(gotoModeButtonGroup, static_cast<void (QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), this, [=](int id){ this->currentGotoMode = static_cast<GotoMode>(id); });
 
     // TODO make this configurable, 3 minutes timeout
     alignTimer.setInterval(180*1000);
     connect(&alignTimer, SIGNAL(timeout()), this, SLOT(checkAlignmentTimeout()));
-
-    int i=0;
-    foreach(QAbstractButton *button, gotoModeButtonGroup->buttons())
-        gotoModeButtonGroup->setId(button, i++);
 
     currentGotoMode = static_cast<GotoMode>(Options::solverGotoOption());
     gotoModeButtonGroup->button(currentGotoMode)->setChecked(true);
@@ -167,8 +167,8 @@ Align::Align()
         setEnabled(false);
     else
     {
-        connect(parser, SIGNAL(solverFinished(double,double,double, double)), this, SLOT(solverFinished(double,double,double, double)));
-        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()));
+        connect(parser, SIGNAL(solverFinished(double,double,double, double)), this, SLOT(solverFinished(double,double,double, double)), Qt::UniqueConnection);
+        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()), Qt::UniqueConnection);
     }
 
     solverOptions->setText(Options::solverOptions());
@@ -199,8 +199,8 @@ bool Align::isParserOK()
 
     if (rc)
     {
-        connect(parser, SIGNAL(solverFinished(double,double,double)), this, SLOT(solverFinished(double,double,double)));
-        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()));
+        connect(parser, SIGNAL(solverFinished(double,double,double,double)), this, SLOT(solverFinished(double,double,double,double)), Qt::UniqueConnection);
+        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()), Qt::UniqueConnection);
     }
 
     return rc;
@@ -262,8 +262,8 @@ void Align::setSolverType(int type)
     parser->setAlign(this);
     if (parser->init())
     {
-        connect(parser, SIGNAL(solverFinished(double,double,double, double)), this, SLOT(solverFinished(double,double,double, double)));
-        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()));
+        connect(parser, SIGNAL(solverFinished(double,double,double, double)), this, SLOT(solverFinished(double,double,double, double)), Qt::UniqueConnection);
+        connect(parser, SIGNAL(solverFailed()), this, SLOT(solverFailed()), Qt::UniqueConnection);
     }
     else
         parser->disconnect();
@@ -377,7 +377,6 @@ void Align::syncTelescopeInfo()
 void Align::syncCCDInfo()
 {
     INumberVectorProperty * nvp = NULL;
-    int x,y;
 
     if (currentCCD == NULL)
         return;
@@ -611,6 +610,19 @@ bool Align::captureAndSolve()
         }
     }
 
+    if (currentCCD->getDriverInfo()->getClientManager()->getBLOBMode(currentCCD->getDeviceName(), "CCD1") == B_NEVER)
+    {
+        if (KMessageBox::questionYesNo(0, i18n("Image transfer is disabled for this camera. Would you like to enable it?")) == KMessageBox::Yes)
+        {
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD1");
+            currentCCD->getDriverInfo()->getClientManager()->setBLOBMode(B_ALSO, currentCCD->getDeviceName(), "CCD2");
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     double seqExpose = exposureIN->value();
 
     ISD::CCDChip *targetChip = currentCCD->getChip(useGuideHead ? ISD::CCDChip::GUIDE_CCD : ISD::CCDChip::PRIMARY_CCD);
@@ -618,7 +630,7 @@ bool Align::captureAndSolve()
     if (focusState >= FOCUS_PROGRESS)
     {
         appendLogText(i18n("Cannot capture while focus module is busy! Retrying..."));
-        QTimer::singleShot(1000, this, SLOT(captureAndSolve()));
+        QTimer::singleShot(5000, this, SLOT(captureAndSolve()));
         return false;
     }
 
@@ -721,7 +733,10 @@ void Align::newFITS(IBLOB *bp)
                 if (darkData)
                     DarkLibrary::Instance()->subtract(darkData, currentImage, FITS_NONE, offsetX, offsetY);
                 else
-                    DarkLibrary::Instance()->captureAndSubtract(targetChip, currentImage, exposureIN->value(), offsetX, offsetY);
+                {
+                    bool rc = DarkLibrary::Instance()->captureAndSubtract(targetChip, currentImage, exposureIN->value(), offsetX, offsetY);
+                    alignDarkFrameCheck->setChecked(rc);
+                }
 
                 return;
             }
@@ -733,7 +748,23 @@ void Align::newFITS(IBLOB *bp)
 
 void Align::setCaptureComplete()
 {
-    DarkLibrary::Instance()->disconnect(this);   
+    DarkLibrary::Instance()->disconnect(this);
+
+    if (solverTypeGroup->checkedId() == SOLVER_ONLINE && Options::astrometryUseJPEG())
+    {
+        ISD::CCDChip *targetChip = currentCCD->getChip(useGuideHead ? ISD::CCDChip::GUIDE_CCD : ISD::CCDChip::PRIMARY_CCD);
+        if (targetChip)
+        {
+            FITSView *view = targetChip->getImageView(FITS_ALIGN);
+            if (view)
+            {
+                QString jpegFile = blobFileName + ".jpg";
+                bool rc = view->getDisplayImage()->save(jpegFile, "JPG");
+                if (rc)
+                    blobFileName = jpegFile;
+            }
+        }
+    }
 
     startSolving(blobFileName);
 }
@@ -748,6 +779,30 @@ void Align::startSolving(const QString &filename, bool isGenerated)
 {
     QStringList solverArgs;
     double ra,dec;
+
+    if (isGenerated)
+        solverArgs = solverOptions->text().split(" ");
+    else if (filename.endsWith("fits") || filename.endsWith("fit"))
+    {
+        solverArgs = getSolverOptionsFromFITS(filename);
+        appendLogText(i18n("Using solver options: %1", solverArgs.join(" ")));
+    }
+    else
+    {
+        KGuiItem blindItem(i18n("Blind solver"), QString(), i18n("Blind solver takes a very long time to solve but can reliably solve any image any where in the sky given enough time."));
+        KGuiItem existingItem(i18n("Use existing settings"), QString(), i18n("Mount must be pointing close to the target location and current field of view must match the image's field of view."));
+        int rc = KMessageBox::questionYesNoCancel(0, i18n("No metadata is available in this image. Do you want to use the blind solver or the existing solver settings?"), i18n("Astrometry solver"),
+                                         blindItem, existingItem, KStandardGuiItem::cancel(), "blind_solver_or_existing_solver_option");
+        if (rc == KMessageBox::Yes)
+            solverArgs << "--no-verify" << "--no-plots" << "--no-fits2fits" << "--resort"  << "--downsample" << "2" << "-O";
+        else if (rc == KMessageBox::No)
+            solverArgs = solverOptions->text().split(" ");
+        else
+        {
+            abort();
+            return;
+        }
+    }
 
     currentTelescope->getEqCoords(&ra, &dec);
 
@@ -772,16 +827,6 @@ void Align::startSolving(const QString &filename, bool isGenerated)
     solverTimer.start();
 
     alignTimer.start();
-
-    if (isGenerated)
-        solverArgs = solverOptions->text().split(" ");
-    else if (filename.endsWith("fits") || filename.endsWith("fit"))
-    {
-        solverArgs = getSolverOptionsFromFITS(filename);
-        appendLogText(i18n("Using solver options: %1", solverArgs.join(" ")));
-    }
-    else
-        solverArgs << "--no-verify" << "--no-plots" << "--no-fits2fits" << "--resort"  << "--downsample" << "2" << "-O";
 
     if (currentGotoMode == GOTO_SLEW)
         appendLogText(i18n("Solver iteration #%1", solverIterations+1));
@@ -892,10 +937,11 @@ void Align::solverFinished(double orientation, double ra, double dec, double pix
      {
         case GOTO_SYNC:
          executeGOTO();
+         return;
          break;
 
         case GOTO_SLEW:
-         if (targetDiff > accuracySpin->value())
+         if (loadSlewState == IPS_BUSY || targetDiff > accuracySpin->value())
          {
              if (loadSlewState == IPS_IDLE && ++solverIterations == MAXIMUM_SOLVER_ITERATIONS)
              {
@@ -1038,30 +1084,118 @@ void Align::processTelescopeNumber(INumberVectorProperty *coord)
         ScopeRAOut->setText(ra_dms);
         ScopeDecOut->setText(dec_dms);
 
-        if (currentTelescope->isSlewing() && slew_dirty == false)
-            slew_dirty = true;
-        else if (currentTelescope->isSlewing() == false && slew_dirty)
+        switch (coord->s)
         {
-            slew_dirty = false;
-            if (Options::solverUpdateCoords())
+        case IPS_OK:
+        {
+            // Update the boxes as the mount just finished slewing
+            if (slew_dirty && Options::solverUpdateCoords())
                 copyCoordsToBoxes();
 
-            if (state >= ALIGN_PROGRESS)
+            switch (state)
             {
+            case ALIGN_PROGRESS:
+                break;
+
+            case ALIGN_SYNCING:
+            {
+                slew_dirty = false;
+                if (currentGotoMode == GOTO_SLEW)
+                {
+                    Slew();
+                    return;
+                }
+                else
+                {
+                    appendLogText(i18n("Mount is synced to solution coordinates. Astrometric solver is successful."));
+                    KNotification::event( QLatin1String( "AlignSuccessful"), i18n("Astrometry alignment completed successfully") );
+                    state = ALIGN_COMPLETE;
+                    emit newStatus(state);
+                }
+            }
+            break;
+
+            case ALIGN_SLEWING:
+                if (slew_dirty == false)
+                    break;
+
+                slew_dirty = false;
                 if (loadSlewState == IPS_BUSY)
                 {
                     loadSlewState = IPS_IDLE;
+
+                    if (Options::alignmentLogging())
+                        qDebug() << "Alignment: loadSlewState is IDLE.";
+
+                    state = ALIGN_PROGRESS;
+                    emit newStatus(state);
+
                     QTimer::singleShot(delaySpin->value(), this, SLOT(captureAndSolve()));
                     return;
                 }
-                else if (currentGotoMode == GOTO_SLEW && state == ALIGN_SLEWING)
+                else if(currentGotoMode == GOTO_SLEW)
                 {
-                    appendLogText(i18n("Target accuracy is not met, running solver again..."));
+                    appendLogText(i18n("Slew complete. Target accuracy is not met, running solver again..."));
+
+                    state = ALIGN_PROGRESS;
+                    emit newStatus(state);
+
                     QTimer::singleShot(delaySpin->value(), this, SLOT(captureAndSolve()));
                     return;
                 }
+                break;
+
+            default:
+            {
+                slew_dirty = false;
+            }
+            break;
             }
         }
+        break;
+
+        case IPS_BUSY:
+        {
+            slew_dirty = true;
+
+        }
+        break;
+
+        case IPS_ALERT:
+        {
+            if (state == ALIGN_SYNCING || state == ALIGN_SLEWING)
+            {
+                if (state == ALIGN_SYNCING)
+                    appendLogText(i18n("Syncing failed!"));
+                else
+                    appendLogText(i18n("Slewing failed!"));
+
+                if (++retries == 3)
+                {
+                    abort();
+                    return;
+                }
+                else
+                {
+                    if (currentGotoMode == GOTO_SLEW)
+                        Slew();
+                    else
+                        Sync();
+                }
+            }
+
+            return;
+        }
+        break;
+
+        default:
+        break;
+        }
+
+
+        /*if (Options::alignmentLogging())
+            qDebug() << "Alignment: State is " << Ekos::getAlignStatusString(state) << " isSlewing? " << currentTelescope->isSlewing() << " slew Dirty? " << slew_dirty
+                     << " Current GOTO Mode? " << currentGotoMode << " LoadSlewState? " << pstateStr(loadSlewState);*/
 
         switch (azStage)
         {
@@ -1143,27 +1277,40 @@ void Align::executeGOTO()
 
 void Align::Sync()
 {
-    if (currentTelescope->Sync(&alignCoord))
-        appendLogText(i18n("Syncing to RA (%1) DEC (%2) is successful.", alignCoord.ra().toHMSString(), alignCoord.dec().toDMSString()));
-    else
-        appendLogText(i18n("Syncing failed."));
+    state = ALIGN_SYNCING;
 
+    if (currentTelescope->Sync(&alignCoord))    
+    {
+        emit newStatus(state);
+        appendLogText(i18n("Syncing to RA (%1) DEC (%2)", alignCoord.ra().toHMSString(), alignCoord.dec().toDMSString()));
+    }
+    else
+    {
+        state = ALIGN_IDLE;
+        emit newStatus(state);
+        appendLogText(i18n("Syncing failed."));
+    }
 }
 
-void Align::SlewToTarget()
+void Align::Slew()
 {
-    //if (canSync && (loadSlewMode == false || (loadSlewMode == true && loadSlewIterations < loadSlewIterationsSpin->value() )))
-    if (canSync && loadSlewState == IPS_IDLE)
-        Sync();
-
-    //m_slewToTargetSelected = slewR->isChecked();
+    state = ALIGN_SLEWING;
+    emit newStatus(state);
 
     currentTelescope->Slew(&targetCoord);
 
     appendLogText(i18n("Slewing to target coordinates: RA (%1) DEC (%2).", targetCoord.ra().toHMSString(), targetCoord.dec().toDMSString()));
+}
 
-    state = ALIGN_SLEWING;
-    emit newStatus(state);
+void Align::SlewToTarget()
+{
+    if (canSync && loadSlewState == IPS_IDLE)
+    {
+        Sync();
+        return;
+    }
+
+    Slew();
 }
 
 void Align::executePolarAlign()
@@ -1632,6 +1779,7 @@ void Align::loadAndSlew(QString fileURL)
     loadSlewState=IPS_BUSY;
 
     slewR->setChecked(true);
+    currentGotoMode = GOTO_SLEW;
 
     solveB->setEnabled(false);
     stopB->setEnabled(true);
@@ -1893,6 +2041,19 @@ QStringList Align::getSolverOptionsFromFITS(const QString &filename)
 void Align::saveSettleTime()
 {
     Options::setSettlingTime(delaySpin->value());
+}
+
+void Align::setCaptureStatus(CaptureState newState)
+{
+    switch (newState)
+    {
+    case CAPTURE_ALIGNING:
+        QTimer::singleShot(Options::settlingTime(), this, SLOT(captureAndSolve()));
+        break;
+
+    default:
+        break;
+    }
 }
 
 }

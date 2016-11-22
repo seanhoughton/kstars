@@ -51,6 +51,7 @@ InternalGuider::InternalGuider()
 
 InternalGuider::~InternalGuider()
 {
+    delete (pmath);
 }
 
 bool InternalGuider::guide()
@@ -214,8 +215,6 @@ bool InternalGuider::dither(double pixels)
 
         // Back to guiding
         state = GUIDE_GUIDING;
-        emit newStatus(state);
-
     }
     else
     {
@@ -739,9 +738,7 @@ bool InternalGuider::processGuiding()
 {
     static int maxPulseCounter=0;
     const cproc_out_params *out;
-    QString str;
     uint32_t tick = 0;
-    double drift_x = 0, drift_y = 0;
 
     // On first frame, center the box (reticle) around the star so we do not start with an offset the results in
     // unnecessary guiding pulses.
@@ -770,12 +767,13 @@ bool InternalGuider::processGuiding()
     // do pulse
     out = pmath->getOutputParameters();
 
-    if (out->pulse_length[GUIDE_RA] == Options::rAMaximumPulse() || out->pulse_length[GUIDE_DEC] == Options::dECMaximumPulse())
+    // If within 90% of max pulse repeatedly, let's abort
+    if (out->pulse_length[GUIDE_RA] >=  (0.9 * Options::rAMaximumPulse()) || out->pulse_length[GUIDE_DEC] >= (0.9 * Options::dECMaximumPulse()))
         maxPulseCounter++;
     else
         maxPulseCounter=0;
 
-    if (maxPulseCounter > 3)
+    if (maxPulseCounter >= 3)
     {
         emit newLog(i18n("Lost track of the guide star. Aborting guiding..."));
         abort();
