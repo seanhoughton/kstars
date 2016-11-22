@@ -1,41 +1,24 @@
 language: c++
-compiler: clang
+compiler:
+ - gcc
+ - clang
+
 os:
-  #- linux
+#  - linux
   - osx
 
-osx_image: xcode8
+branches:
+  only:
+    - master
+    - feature/travisci
 
 before_install:
-  - brew update
-  - brew tap homebrew/science
-  - brew install cfitsio
-  - brew install eigen
-  - brew install gettext
-  - brew install astrometry-net
-  #- travis_wait 600 brew install qt5 --with-dbus
-  - travis_wait 30 brew install qt5
-  - brew tap haraldf/kf5
-  - brew install haraldf/kf5/kf5-kplotting
-  - brew install haraldf/kf5/kf5-kxmlgui
-  - brew install haraldf/kf5/kf5-knewstuff
-  - brew install haraldf/kf5/k5f-kdoctools
-  - brew install haraldf/kf5/kf5-knotifications
-  - brew install haraldf/kf5/kf5-kcrash
-  - brew tap polakovic/astronomy
-  - brew install polakovic/astronomy/libindi
+  - travis-ci/deps-${TRAVIS_OS_NAME}.sh
 
 install: true
 
 before_script:
-  - mkdir build
-  - cd build
-  - export PATH=$PATH:$(brew --prefix gettext)/bin
-  - export Qt5_DIR=$(brew --prefix qt5)
-  - export Qt5DBus_DIR=$Qt5_DIR
-  - export Qt5Test_DIR=$Qt5_DIR
-  - export Qt5Network_DIR=$Qt5_DIR
-  - cmake ..
+  - travis-ci/cmake-${TRAVIS_OS_NAME}.sh
 
 script:
   - cd build
